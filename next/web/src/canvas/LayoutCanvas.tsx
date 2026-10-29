@@ -48,23 +48,23 @@ type Props = {
 type Cam = { ppm: number; ox: number; oy: number };
 
 const FILL: Record<string, string> = {
-  "ST-PAL-01": "#1f8f86",
-  "ST-FLOOR-01": "#3c7a55",
-  "IN-DOCK-01": "#2f7eb8",
-  "OUT-DOCK-01": "#c47a3a",
-  "PK-DEPAL-01": "#c4893d",
-  "PK-PUT-EACH-01": "#8b6bb5",
-  "OUT-PACK-01": "#3d8f98",
-  "MH-HAND-01": "#5d7c8c",
-  "MH-FORK-01": "#8a7a45",
-  "AUX-FIRE-01": "#a14b4b",
-  "AUX-WALL-01": "#8b97a3",
+  "ST-PAL-01": "#bfded7",
+  "ST-FLOOR-01": "#d3e8df",
+  "IN-DOCK-01": "#d3dee8",
+  "OUT-DOCK-01": "#d7e0ea",
+  "PK-DEPAL-01": "#f4d6b9",
+  "PK-PUT-EACH-01": "#d5e2f2",
+  "OUT-PACK-01": "#cadcf0",
+  "MH-HAND-01": "#e1e9e6",
+  "MH-FORK-01": "#d8e6df",
+  "AUX-FIRE-01": "#fbe2bd",
+  "AUX-WALL-01": "#dce4e4",
 };
 
 const TONE_STROKE: Record<Tone, string> = {
-  green: "#3ee0a0",
-  yellow: "#e2b34a",
-  red: "#ff5d5d",
+  green: "#2f8f72",
+  yellow: "#c4922e",
+  red: "#ce5d50",
 };
 
 export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanvas(
@@ -203,20 +203,10 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
           aria-label="综合仓米制布局"
           onPointerDown={onBackground}
         >
-          <defs>
-            <linearGradient id="hud-floor" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#102833" />
-              <stop offset="1" stopColor="#0b161c" />
-            </linearGradient>
-            <pattern id="hud-dots" width="28" height="28" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="0.7" fill="rgba(120,210,200,0.18)" />
-            </pattern>
-          </defs>
-          <rect x={0} y={0} width={view.w} height={view.h} fill="#071015" />
-          <rect x={0} y={0} width={view.w} height={view.h} fill="url(#hud-dots)" />
+          <rect x={0} y={0} width={view.w} height={view.h} fill="#fafcfb" />
           <g transform={`translate(${cam.ox} ${cam.oy}) scale(${cam.ppm} ${-cam.ppm})`}>
             {sized ? (
-              <rect x={0} y={0} width={width} height={height} fill="url(#hud-floor)" stroke="#7ee7d8" strokeWidth={1.6 / cam.ppm} />
+              <rect x={0} y={0} width={width} height={height} fill="#f5f8f6" stroke="#738d8d" strokeWidth={1.4 / cam.ppm} />
             ) : null}
             {sized && showGrid
               ? gridLines(width, height, gridStep).map((line) => (
@@ -226,7 +216,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                     y1={line.y1}
                     x2={line.x2}
                     y2={line.y2}
-                    stroke="rgba(140,210,200,0.16)"
+                    stroke="#e4ecea"
                     strokeWidth={1 / cam.ppm}
                   />
                 ))
@@ -238,8 +228,8 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                   y={aisleY - (Number.isFinite(aisleW) ? aisleW : 3) / 2}
                   width={Math.abs(aisleTo - aisleFrom)}
                   height={Number.isFinite(aisleW) ? aisleW : 3}
-                  fill="rgba(80, 180, 170, 0.08)"
-                  stroke="rgba(140, 220, 210, 0.35)"
+                  fill="#ffffff"
+                  stroke="#d0dcda"
                   strokeWidth={1 / cam.ppm}
                 />
                 <line
@@ -247,7 +237,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                   y1={aisleY}
                   x2={aisleTo}
                   y2={aisleY}
-                  stroke="#8ef0e4"
+                  stroke="#a8c7c1"
                   strokeWidth={1.2 / cam.ppm}
                   strokeDasharray={`${0.45} ${0.35}`}
                 />
@@ -260,7 +250,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                 y1={guide.y1}
                 x2={guide.x2}
                 y2={guide.y2}
-                stroke="#f2d48a"
+                stroke="#c4a15a"
                 strokeWidth={1.2 / cam.ppm}
                 strokeDasharray={`${0.25} ${0.2}`}
               />
@@ -311,7 +301,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                     <polyline
                       points={trail.map((p) => `${p.x},${p.y}`).join(" ")}
                       fill="none"
-                      stroke="#ffb15a"
+                      stroke="#d8855c"
                       strokeWidth={2.2 / cam.ppm}
                       strokeLinejoin="round"
                       strokeLinecap="round"
@@ -324,8 +314,8 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                     widthM={0.8}
                     heightM={1.5}
                     yawDeg={heading}
-                    fill="#ff9a3c"
-                    stroke="#ffe1bf"
+                    fill="#e58a57"
+                    stroke="#9a5a32"
                     ppm={cam.ppm}
                     relief
                     label={actor.resourceId}
@@ -340,13 +330,13 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
           <span className="green-dot" />
           <span>{badge}</span>
         </div>
-        <div className="hud-legend">
+        <div className="canvas-legend">
           <i className="swatch green" /> 可放
           <i className="swatch yellow" /> 注意
           <i className="swatch red" /> 拒绝
         </div>
         <div className="board-scale">
-          <span style={{ display: "block", width: barM * cam.ppm, borderTop: "2px solid #9ee8dc", marginBottom: 4 }} />
+          <span style={{ display: "block", width: barM * cam.ppm, borderTop: "2px solid #536d70", marginBottom: 4 }} />
           {barM} m
         </div>
         <div className="zoom-controls">
@@ -430,7 +420,7 @@ function Item({
   onMove: (id: string, x: number, y: number, phase: "start" | "move" | "end") => void;
 }) {
   const spec = catalogItem(el.typeElementId);
-  const stroke = tone ? TONE_STROKE[tone] : conflict ? "#ff5d5d" : selected ? "#9dfff0" : "rgba(220,245,240,0.7)";
+  const stroke = tone ? TONE_STROKE[tone] : conflict ? "#ce5d50" : selected ? "#168d7e" : "#7a9892";
   return (
     <g
       className={`board-item${selected ? " selected" : ""}${conflict ? " conflict" : ""}`}
@@ -465,7 +455,7 @@ function Item({
           y1={el.y}
           x2={el.accessX}
           y2={el.accessY}
-          stroke="rgba(150, 230, 220, 0.55)"
+          stroke="#a8c7c1"
           strokeWidth={1 / ppm}
           strokeDasharray={`${0.2} ${0.15}`}
         />
@@ -559,17 +549,17 @@ function ProxyBox({
                 y1={a.y + shift.y}
                 x2={b.x + shift.x}
                 y2={b.y + shift.y}
-                stroke="rgba(255,255,255,0.35)"
+                stroke="rgba(80, 110, 106, 0.35)"
                 strokeWidth={1 / ppm}
               />
             );
           })
         : null}
       <g transform={`translate(${x + offset.x} ${y + offset.y}) scale(${1 / ppm} ${-1 / ppm})`} pointerEvents="none">
-        <text y={-6} textAnchor="middle" fill="#e7f7f4" fontSize={12} fontWeight={700}>
+        <text y={-6} textAnchor="middle" fill="#294246" fontSize={12} fontWeight={700}>
           {label}
         </text>
-        <text y={10} textAnchor="middle" fill="#9ec4c0" fontSize={10}>
+        <text y={10} textAnchor="middle" fill="#748e90" fontSize={10}>
           {detail}
         </text>
       </g>

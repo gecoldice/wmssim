@@ -559,7 +559,7 @@ export function Workbench() {
             <b />
           </span>
           <span className="brandname">
-            仓序<span style={{ color: "#7f9ea6", fontWeight: 400 }}> / </span>规划
+            仓序<span style={{ color: "#9baaaa", fontWeight: 400 }}> / </span>规划
           </span>
         </div>
         <div className="project">
