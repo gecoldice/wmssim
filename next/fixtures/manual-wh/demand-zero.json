@@ -1,0 +1,61 @@
+{
+  "contractVersion": "0.3",
+  "id": "demand-zero",
+  "revision": "fixture",
+  "parentRef": null,
+  "goodsGroups": [
+    {
+      "id": "gg-std-pallet",
+      "loadUnit": "pallet",
+      "dimensionsM": {
+        "length": 1.2,
+        "width": 1.0,
+        "height": 1.5
+      },
+      "grossWeightKg": 800,
+      "stackability": "stackable",
+      "allowedStorageTypes": [
+        "ST-PAL-01"
+      ],
+      "quantityUnit": "pallet",
+      "evidence": {
+        "sourceKind": "manual",
+        "sourceRef": "slice-manual-test",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T00:00:00+00:00"
+      }
+    }
+  ],
+  "inventoryTargets": [
+    {
+      "goodsGroupId": "gg-std-pallet",
+      "quantity": 8,
+      "unit": "pallet"
+    }
+  ],
+  "initialInventory": [],
+  "flows": [
+    {
+      "flowKind": "full_pallet",
+      "intent": "outbound",
+      "inputBasis": "explicit_quantity",
+      "quantity": 0,
+      "unit": "pallet",
+      "source": "storage",
+      "downstream": null,
+      "conversionRef": null,
+      "parentFlowId": null
+    }
+  ],
+  "arrivalProfile": {
+    "kind": "uniform",
+    "windowSec": 20,
+    "unit": "pallet",
+    "paramsSource": "slice-manual-test"
+  },
+  "serviceTargets": [],
+  "assumptions": [
+    "测试夹具数值，不是客户项目默认值",
+    "四卡期望数字在事件手工核对之后才写入 expected-cards.json"
+  ]
+}

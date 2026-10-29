@@ -1,0 +1,35 @@
+/** Product copy for the manual slice. No KPI numbers live here. */
+
+export const copy = {
+  emptyLayout: "还没有可推演的布局。请放下货架和月台后再保存。",
+  validationFail: "准备未通过，不能推演。",
+  simFail: "这次推演没有完成。",
+  staleLayout: "这条结果已过期：布局已改变。",
+  staleDemand: "这条结果已过期：需求已改变。",
+  demoRejected: "结果被拒绝：响应标明来自界面演示数。",
+  missing: "未填写",
+  noCompleted: "无完成任务",
+  rateNa: "不适用",
+  noWaitSample: "无等待样本",
+  saveFailed: "保存失败，未写入修订。草稿仍在这次打开的页面里，刷新后不会当成已保存。",
+  saved: "已保存",
+  unsaved: "未保存",
+  notIssued: "未签发",
+  testBanner: "已填入测试夹具数值，不是项目默认值。",
+  unsupportedType: "本切片只启用标准托盘货架、收货月台和发货月台。",
+  view3d: "本切片不提供 3D 巡视。",
+  report: "本切片不导出报告。",
+  needSave: "请先保存当前布局，再准备。",
+  needPrepare: "请先准备布局。准备未通过时不能推演。",
+  needFields: "速度、处理时间和班次还没有填完。未填写的项目不能推演。",
+  cards: {
+    throughput: "托盘吞吐",
+    wait: "任务等待",
+    utilization: "资源利用率",
+    bottleneck: "主要瓶颈",
+  },
+  units: {
+    throughput: "托当量/时",
+    wait: "秒",
+  },
+};

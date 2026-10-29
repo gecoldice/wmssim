@@ -1,0 +1,33 @@
+{
+  "contractVersion": "0.3",
+  "id": "op-one",
+  "revision": "fixture",
+  "parentRef": null,
+  "resourcePools": [
+    {
+      "id": "pool-forklift",
+      "resourceType": "forklift",
+      "count": 1,
+      "capabilityRef": "cap-forklift-test",
+      "availableWindowSec": 3600,
+      "homeInstanceIds": []
+    }
+  ],
+  "serviceParameters": {
+    "travelSpeedMps": 1.2,
+    "emptySpeedMps": 1.5,
+    "processSec": {
+      "pick": 10,
+      "ship": 5
+    },
+    "paramsSource": "slice-manual-test",
+    "note": "测试夹具数值，不是客户项目默认值"
+  },
+  "routingPolicy": {
+    "kind": "shortest_path"
+  },
+  "shiftWindow": {
+    "startSec": 0,
+    "endSec": 3600
+  }
+}

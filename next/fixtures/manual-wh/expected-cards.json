@@ -1,0 +1,61 @@
+{
+  "engineVersion": "slice-des-0.1",
+  "metricDefinitionVersion": "metrics-slice-manual-v1",
+  "kpiFromUiDemo": false,
+  "rounding": "托数必须精确相等。时间与比率相对下列分数的绝对误差不超过 1e-6。",
+  "fractions": {
+    "note": "见 hand-check.md。第一托从收货端空驶 10 m，之后叉车停在发货端，空驶改为 26 m。",
+    "meanSec": "131/2",
+    "p95Sec": "409/3",
+    "p95Rank": "ceil(0.95*4)=4",
+    "bottleneckWaitSec": "262",
+    "busySec": "616/3",
+    "utilization": "77/1350",
+    "outboundPalletEq": "4",
+    "sampleCount": 4
+  },
+  "cards": {
+    "throughput": {
+      "value": 4.0,
+      "outboundPalletEq": 4.0
+    },
+    "wait": {
+      "meanSec": 65.5,
+      "p95Sec": 136.33333333333334,
+      "sampleCount": 4
+    },
+    "utilization": {
+      "byResourceType": [
+        {
+          "resourceType": "forklift",
+          "resourceCount": 1,
+          "busySec": 205.33333333333334,
+          "utilization": 0.05703703703703704
+        }
+      ]
+    },
+    "bottleneck": {
+      "topN": [
+        {
+          "entityId": "pool-forklift",
+          "waitSec": 262.0,
+          "share": 1.0
+        }
+      ]
+    }
+  },
+  "secondary": {
+    "completedTasks": 4,
+    "incompleteTasks": 0,
+    "completionRate": 1.0
+  },
+  "inventoryConservation": {
+    "ok": true,
+    "initial": 4.0,
+    "inbound": 0.0,
+    "outbound": 4.0,
+    "ending": 0.0,
+    "inTransit": 0.0,
+    "residual": 0.0
+  }
+}
