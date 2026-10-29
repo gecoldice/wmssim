@@ -1,4 +1,4 @@
-"""Worker entrypoint — M4：成本/比较经 API；DES/规划同进程可调。"""
+"""Worker entrypoint — M5：识图/高级优化为明确不支持；成本/DES 经 API。"""
 
 from __future__ import annotations
 
@@ -25,14 +25,19 @@ def main() -> int:
         from simapp_compare import COMPARE_ENGINE_VERSION
     except ImportError:
         COMPARE_ENGINE_VERSION = "unavailable"
+    try:
+        from simapp_extend import EXTEND_VERSION
+    except ImportError:
+        EXTEND_VERSION = "unavailable"
     payload = {
         "role": "compute-worker",
         "status": "idle",
         "contractVersion": "0.3",
-        "milestone": "M4",
+        "milestone": "M5",
         "engineVersion": ENGINE_VERSION,
         "costEngineVersion": COST_ENGINE_VERSION,
         "compareEngineVersion": COMPARE_ENGINE_VERSION,
+        "extendVersion": EXTEND_VERSION,
         "capabilities": {
             "geometry": "aabb+segment",
             "derive": True,
@@ -48,19 +53,23 @@ def main() -> int:
             "claimsOperationalEfficiency": True,
             "missingPriceBlocksLowestCost": True,
             "missingAxisNoZeroFill": True,
+            "recognitionImplemented": False,
+            "nsga2Implemented": False,
+            "lifecycleCostImplemented": False,
+            "claimsUnimplementedM5": False,
         },
         "contracts": str(ROOT / "contracts"),
         "fixtures": str(ROOT / "fixtures"),
         "message": (
-            "M4: cost-estimate / comparisons / reports via API; "
-            "DES via /simulation-jobs; missing price blocks lowest-cost ranking"
+            "M5: recognition and NSGA-II/lifecycle return explicit unsupported; "
+            "M4 cost/compare and M3 DES remain on the API"
         ),
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if not args.ping:
         print(
-            "No job loop; use API /cost-estimate-jobs, /comparisons, /reports, "
-            "/simulation-jobs, /planning-jobs, /layouts/{id}/prepare-jobs."
+            "No job loop; use API /layouts/{id}/prepare-jobs, /simulation-jobs, "
+            "/planning-jobs, /cost-estimate-jobs, /recognition-jobs, /advanced-evaluations."
         )
     return 0
 

@@ -1,988 +1,1068 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CONTRACT_VERSION, EQUIP_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION } from "@simapp/contracts";
+import { apiJson } from "./api";
 import {
-  CONTRACT_VERSION,
-  EQUIP_SCHEMA_VERSION,
-  SNAPSHOT_SCHEMA_VERSION,
-  planeToWorld3d,
-} from "@simapp/contracts";
+  buildFacility,
+  buildLayout,
+  buildOperating,
+  buildPlanningDemand,
+  buildSimDemand,
+  elementsFromDocument,
+  templateElements,
+  type PlacedElement,
+} from "./documents";
+import { CATEGORIES, LIBRARY, defaultParams, libraryItem, type LibraryItem } from "./library";
 
-type Health = {
+type View = "layout" | "results" | "compare";
+
+type Check = { ruleId: string; status: string; message: string };
+
+type PrepareState = {
+  simulationReady: boolean;
+  prepareStatus: string;
+  validationStatus: string;
+  layoutRevision: string;
+  checks: Check[];
+};
+
+type Cards = {
+  throughput?: { value?: number | null; unit?: string; outboundPalletEq?: number };
+  wait?: { meanSec?: number | null; p95Sec?: number | null; sampleCount?: number; unit?: string };
+  utilization?: { value?: number | null; unit?: string; note?: string };
+  bottleneck?: { top1?: { entityId?: string | null; note?: string; waitSec?: number } };
+};
+
+type SimState = {
+  runId: string;
+  layoutRevision: string;
+  cards: Cards;
+  completionRate: number | null;
+  completedTasks: number | null;
+  incompleteTasks: number | null;
+  warnings: string[];
+};
+
+type Candidate = {
+  id: string;
+  evaluationLevel?: string;
+  claimsOperationalEfficiency?: boolean;
+  metrics?: Record<string, { value?: number | null; unit?: string; status?: string }>;
+};
+
+type FailureCard = {
+  capability: string;
   status: string;
-  contractVersion: string;
-  milestone?: string;
-  capabilities?: Record<string, unknown>;
+  code: string;
+  message: string;
+  correction: string;
+  score: number | null;
+  horizonCost: number | null;
 };
 
-type PrepareResult = {
-  simulationReady?: boolean;
-  prepareStatus?: string;
-  validationStatus?: string;
-  layoutRevision?: string;
-  validationReport?: { status: string; checks: Array<{ ruleId: string; message: string }> };
+type SavedRefs = {
+  projectId: string;
+  facilityRevision: string;
+  layoutId: string;
+  layoutRevision: string;
+  variantId: string;
+  variantRevision: string;
 };
 
-type SimResult = {
-  runId?: string;
-  layoutRevision?: string;
-  kpi?: {
-    cards?: {
-      throughput?: { value?: number; outboundPalletEq?: number };
-      wait?: { meanSec?: number | null; sampleCount?: number };
-      utilization?: { value?: number | null };
-      bottleneck?: { top1?: { entityId?: string | null; note?: string } };
-    };
-  };
-  inventoryConservation?: { ok?: boolean; residual?: number };
-  replayBinding?: { layoutRevision?: string };
-  warnings?: Array<{ code: string; message: string }>;
-};
+const ADVANCED = [
+  "nsga2",
+  "multi_objective",
+  "lifecycle_cost",
+  "expansion_scale",
+  "operability_scale",
+  "calibrated_automation",
+] as const;
 
-type CompareResult = {
-  costCompleteId?: string;
-  costIncompleteStatus?: string;
-  rankingWinner?: string;
-  rankingExcluded?: string[];
-  radarEnabled?: boolean;
-  comparisonMode?: string;
-  reportId?: string;
-  versionConsistent?: boolean;
-};
+function fmt(value: number | null | undefined, digits = 2): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return value.toFixed(digits);
+}
 
-const FX01_FACILITY = {
-  contractVersion: "0.3",
-  id: "facility-fx01",
-  revision: "f-r1",
-  parentRef: null,
-  coord: { origin: "facility_sw_corner", xAxis: "east", yAxis: "north", unit: "m" },
-  boundary: {
-    outer: [
-      { x: 0, y: 0 },
-      { x: 40, y: 0 },
-      { x: 40, y: 24 },
-      { x: 0, y: 24 },
-      { x: 0, y: 0 },
-    ],
-  },
-  obstacles: [],
-  openings: [
-    {
-      id: "door-recv",
-      segment: [
-        { x: 0, y: 10 },
-        { x: 0, y: 14 },
-      ],
-      widthM: 4,
-      heightM: 4.5,
-      role: "recv",
-      approachPolygon: null,
-      evidence: {
-        sourceKind: "demo",
-        sourceRef: "FX-01",
-        confirmationStatus: "confirmed",
-        updatedAt: "2026-10-29T01:00:00+08:00",
-      },
-    },
-    {
-      id: "door-ship",
-      segment: [
-        { x: 40, y: 10 },
-        { x: 40, y: 14 },
-      ],
-      widthM: 4,
-      heightM: 4.5,
-      role: "ship",
-      approachPolygon: null,
-      evidence: {
-        sourceKind: "demo",
-        sourceRef: "FX-01",
-        confirmationStatus: "confirmed",
-        updatedAt: "2026-10-29T01:00:00+08:00",
-      },
-    },
-  ],
-  reservedAreas: [],
-  heightProfile: { kind: "uniform", heightM: 10 },
-  evidence: {
-    sourceKind: "demo",
-    sourceRef: "FX-01",
-    confirmationStatus: "confirmed",
-    updatedAt: "2026-10-29T01:00:00+08:00",
-  },
-};
-
-const FX01_LAYOUT = {
-  contractVersion: "0.3",
-  id: "layout-doc-fx01",
-  revision: "ld-r1",
-  facilityRef: { id: "facility-fx01", revision: "f-r1" },
-  parentRef: null,
-  elements: [
-    {
-      instanceId: "rack-001",
-      typeElementId: "ST-PAL-01",
-      pose: { x: 12, y: 14, yawDeg: 0 },
-      params: { levels: 4, bays: 1, palletsPerBay: 2, minClearWidthM: 3.0 },
-      assetDisposition: "new",
-    },
-    {
-      instanceId: "dock-recv",
-      typeElementId: "IN-DOCK-01",
-      pose: { x: 1, y: 12, yawDeg: 0 },
-      params: {},
-      assetDisposition: "new",
-    },
-    {
-      instanceId: "dock-ship",
-      typeElementId: "OUT-DOCK-01",
-      pose: { x: 39, y: 12, yawDeg: 180 },
-      params: {},
-      assetDisposition: "new",
-    },
-  ],
-  aisles: [
-    {
-      id: "aisle-main",
-      centerline: [
-        { x: 2, y: 12 },
-        { x: 38, y: 12 },
-      ],
-      widthM: 3.5,
-    },
-  ],
-  locks: [],
-  catalogVersion: "catalog-mvp@c-r1",
-};
-
-const FX01_DEMAND = {
-  contractVersion: "0.3",
-  id: "demand-fx01",
-  revision: "d-r1",
-  parentRef: null,
-  goodsGroups: [
-    {
-      id: "gg-std-pallet",
-      loadUnit: "pallet",
-      dimensionsM: { length: 1.2, width: 1.0, height: 1.5 },
-      grossWeightKg: 800,
-      stackability: "stackable",
-      allowedStorageTypes: ["ST-PAL-01", "ST-FLOOR-01"],
-      quantityUnit: "pallet",
-      evidence: {
-        sourceKind: "demo",
-        sourceRef: "FX-01",
-        confirmationStatus: "confirmed",
-        updatedAt: "2026-10-29T01:00:00+08:00",
-      },
-    },
-  ],
-  inventoryTargets: [{ goodsGroupId: "gg-std-pallet", quantity: 48, unit: "pallet" }],
-  initialInventory: [],
-  flows: [],
-  arrivalProfile: { kind: "uniform", windowSec: 28800, unit: "pallet", paramsSource: "demo-fixture" },
-  serviceTargets: [],
-  assumptions: ["演示需求；非运营 KPI"],
-  totalDemand: null,
-};
-
-const FX_M3_DEMAND = {
-  contractVersion: "0.3",
-  id: "demand-fx-m3",
-  revision: "d-m3-1",
-  parentRef: null,
-  goodsGroups: [
-    {
-      id: "gg-std-pallet",
-      loadUnit: "pallet",
-      dimensionsM: { length: 1.2, width: 1.0, height: 1.5 },
-      grossWeightKg: 800,
-      stackability: "stackable",
-      allowedStorageTypes: ["ST-PAL-01"],
-      quantityUnit: "pallet",
-      evidence: {
-        sourceKind: "demo",
-        sourceRef: "FX-M3",
-        confirmationStatus: "confirmed",
-        updatedAt: "2026-10-29T02:00:00+08:00",
-      },
-    },
-  ],
-  inventoryTargets: [{ goodsGroupId: "gg-std-pallet", quantity: 8, unit: "pallet" }],
-  initialInventory: [
-    {
-      goodsGroupId: "gg-std-pallet",
-      quantity: 4,
-      unit: "pallet",
-      locationInstanceId: "rack-001",
-    },
-  ],
-  flows: [
-    {
-      flowKind: "full_pallet",
-      intent: "outbound",
-      inputBasis: "explicit_quantity",
-      quantity: 4,
-      unit: "pallet",
-      source: "storage",
-      downstream: null,
-      conversionRef: null,
-      parentFlowId: null,
-    },
-  ],
-  arrivalProfile: {
-    kind: "uniform",
-    windowSec: 600,
-    unit: "pallet",
-    paramsSource: "fx-m3-fixed",
-  },
-  serviceTargets: [],
-  assumptions: ["M3 固定出库演示"],
-  totalDemand: { quantity: 4, unit: "pallet" },
-};
-
-const FX_M3_OPERATING = {
-  contractVersion: "0.3",
-  id: "op-fx-m3",
-  revision: "o-m3-1",
-  parentRef: null,
-  resourcePools: [
-    {
-      id: "pool-forklift",
-      resourceType: "forklift",
-      count: 1,
-      capabilityRef: "cap-forklift-std",
-      availableWindowSec: 3600,
-      homeInstanceIds: [],
-      skillTags: ["certified"],
-    },
-  ],
-  serviceParameters: {
-    travelSpeedMps: 1.2,
-    emptySpeedMps: 1.5,
-    processSec: { pick: 10, ship: 5, full_pallet: 10 },
-  },
-  routingPolicy: { kind: "shortest_path" },
-  shiftWindow: { startSec: 0, endSec: 3600 },
-  faults: [{ faultType: "edge_block", enabled: true, startTime: 100, duration: 60 }],
-};
-
-const FX_M4_PB_OK = {
-  contractVersion: "0.3",
-  id: "pb-fx-m4",
-  revision: "pb-r1",
-  parentRef: null,
-  currency: "CNY",
-  demoOnly: true,
-  items: [
-    { skuKey: "ST-PAL-01", unitPrice: 12000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
-    { skuKey: "IN-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
-    { skuKey: "OUT-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
-    { skuKey: "resource:forklift", unitPrice: 50000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
-  ],
-};
-
-const FX_M4_PB_MISS = {
-  ...FX_M4_PB_OK,
-  id: "pb-fx-m4-missing",
-  revision: "pb-miss-1",
-  items: [
-    { skuKey: "ST-PAL-01", unitPrice: null, unit: "ea", status: "missing", source: null, asOf: null, taxInclusive: null, specNote: "缺价" },
-    { skuKey: "IN-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
-    { skuKey: "OUT-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
-    { skuKey: "resource:forklift", unitPrice: 50000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
-  ],
-};
-
-const FX_M4_BASIS = {
-  contractVersion: "0.3",
-  id: "cb-fx-m4",
-  revision: "cb-r1",
-  parentRef: null,
-  currency: "CNY",
-  horizonYears: 5,
-  includeInstallFee: true,
-  includeRelocateFee: true,
-  purchaseIncludesInstall: false,
-  feeSchedule: [
-    { kind: "install", rate: 1000, unit: "ea" },
-    { kind: "relocate", rate: 1500, unit: "ea" },
-  ],
-  fxRate: null,
-  notes: "demo",
-};
-
-const FX_M4_SCORE = {
-  contractVersion: "0.3",
-  id: "sp-fx-m4",
-  revision: "sp-r1",
-  parentRef: null,
-  locked: true,
-  axes: {
-    storage: { direction: "higher_better", bad: 10, good: 80, unit: "pallet_slots" },
-    efficiency: { direction: "lower_better", bad: 600, good: 60, unit: "s" },
-    investment: { direction: "lower_better", bad: 200000, good: 20000, unit: "CNY" },
-  },
-};
+function cloneElements(elements: PlacedElement[]): PlacedElement[] {
+  return elements.map((el) => ({ ...el, params: { ...el.params } }));
+}
 
 export function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<View>("layout");
+  const [query, setQuery] = useState("");
+  const [armed, setArmed] = useState<LibraryItem | null>(null);
+  const [widthM, setWidthM] = useState(40);
+  const [depthM, setDepthM] = useState(24);
+  const [aisleWidthM, setAisleWidthM] = useState(3.5);
+  const [aisleYM, setAisleYM] = useState(12);
+  const [elements, setElements] = useState<PlacedElement[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [log, setLog] = useState<string>("");
-  const [ready, setReady] = useState<PrepareResult | null>(null);
-  const [sim, setSim] = useState<SimResult | null>(null);
-  const [compare, setCompare] = useState<CompareResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [statusNote, setStatusNote] = useState("还没有布局。可以从元素库摆放、使用模板，或帮我生成。");
+  const [prepare, setPrepare] = useState<PrepareState | null>(null);
+  const [sim, setSim] = useState<SimState | null>(null);
+  const [saved, setSaved] = useState<SavedRefs | null>(null);
+  const [outboundQty, setOutboundQty] = useState(4);
+  const [forkliftCount, setForkliftCount] = useState(1);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planOutcome, setPlanOutcome] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [disabledGoals, setDisabledGoals] = useState<string[]>([]);
+  const [failures, setFailures] = useState<FailureCard[]>([]);
+  const [recognition, setRecognition] = useState<FailureCard | null>(null);
+  const [recCapability, setRecCapability] = useState<(typeof ADVANCED)[number] | string>("dxf_vector_extract");
+  const [recFile, setRecFile] = useState("hall.dxf");
+  const seq = useRef(1);
+  const history = useRef<PlacedElement[][]>([]);
 
-  const sample = planeToWorld3d({ x: 12, y: 14, yawDeg: 30 }, 1.5);
+  const selected = elements.find((el) => el.instanceId === selectedId) ?? null;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return LIBRARY;
+    return LIBRARY.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) || item.typeElementId.toLowerCase().includes(q),
+    );
+  }, [query]);
 
-  async function pingApi() {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/v1/health");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setHealth((await res.json()) as Health);
-    } catch (e) {
-      setHealth(null);
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const typing = target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+      if (event.key === "Escape") setArmed(null);
+      if (typing) return;
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedId) {
+        event.preventDefault();
+        removeSelected(selectedId);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undo();
+      }
     }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  function remember() {
+    history.current = [...history.current.slice(-30), cloneElements(elements)];
   }
 
-  async function runManualPrepare() {
+  function undo() {
+    const prev = history.current.pop();
+    if (!prev) return;
+    setElements(prev);
+    setDirty(true);
+    setStatusNote("已撤销本地摆放。保存后的修订不会被这条撤销改写。");
+  }
+
+  function touch(next: PlacedElement[]) {
+    remember();
+    setElements(next);
+    setDirty(true);
+    setStatusNote("布局已改，尚未保存。");
+  }
+
+  function place(item: LibraryItem, x: number, y: number) {
+    const params = defaultParams(item);
+    const w = params.footprintW;
+    const d = params.footprintD;
+    const cx = Math.min(Math.max(x, w / 2), Math.max(w / 2, widthM - w / 2));
+    const cy = Math.min(Math.max(y, d / 2), Math.max(d / 2, depthM - d / 2));
+    const instanceId = `${item.typeElementId.toLowerCase()}-${seq.current++}`;
+    touch([
+      ...elements,
+      {
+        instanceId,
+        typeElementId: item.typeElementId,
+        x: Number(cx.toFixed(3)),
+        y: Number(cy.toFixed(3)),
+        yawDeg: 0,
+        params,
+        assetDisposition: "new",
+      },
+    ]);
+    setSelectedId(instanceId);
+    setArmed(null);
+  }
+
+  function updateSelected(patch: Partial<PlacedElement> = {}, params?: Record<string, number>) {
+    if (!selected) return;
+    remember();
+    setElements(
+      elements.map((el) =>
+        el.instanceId === selected.instanceId
+          ? { ...el, ...patch, params: params ?? el.params }
+          : el,
+      ),
+    );
+    setDirty(true);
+  }
+
+  function removeSelected(instanceId: string) {
+    touch(elements.filter((el) => el.instanceId !== instanceId));
+    setSelectedId(null);
+  }
+
+  function applyTemplate() {
+    remember();
+    setWidthM(40);
+    setDepthM(24);
+    setAisleWidthM(3.5);
+    setAisleYM(12);
+    setElements(templateElements());
+    setSelectedId("rack-001");
+    setDirty(true);
+    setArmed(null);
+    setStatusNote("已放入矩形仓模板。这是可编辑布局，保存并准备后才能推演。");
+  }
+
+  async function persist(): Promise<SavedRefs> {
+    const project = saved
+      ? { id: saved.projectId }
+      : await apiJson<{ id: string }>("/api/v1/projects", {
+          method: "POST",
+          body: JSON.stringify({ name: "工作台方案", unitSystem: "metric" }),
+        });
+    const facilityRevision = `f-ui-${seq.current++}`;
+    const facility = buildFacility(widthM, depthM, facilityRevision);
+    const facilityRes = await apiJson<{ gate?: { usableForValidatedPlanning?: boolean } }>(
+      `/api/v1/projects/${project.id}/facility-revisions`,
+      { method: "POST", body: JSON.stringify({ facility }) },
+    );
+    const layoutId = saved?.layoutId ?? "layout-workbench";
+    const layoutRevision = `ld-ui-${seq.current++}`;
+    const document = buildLayout({
+      layoutId,
+      revision: layoutRevision,
+      facilityRevision,
+      elements,
+      widthM,
+      depthM,
+      aisleWidthM,
+      aisleYM,
+    });
+    const savedLayout = await apiJson<{ layoutRef: { id: string; revision: string } }>(
+      `/api/v1/layouts/${layoutId}/revisions`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: project.id,
+          baseRevision: saved && saved.layoutId === layoutId ? saved.layoutRevision : null,
+          document,
+        }),
+      },
+    );
+    const variant = await apiJson<{ id: string; revision: string }>(
+      `/api/v1/projects/${project.id}/variants`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "手动方案",
+          source: "manual",
+          layoutRef: savedLayout.layoutRef,
+        }),
+      },
+    );
+    const refs: SavedRefs = {
+      projectId: project.id,
+      facilityRevision,
+      layoutId: savedLayout.layoutRef.id,
+      layoutRevision: savedLayout.layoutRef.revision,
+      variantId: variant.id,
+      variantRevision: variant.revision,
+    };
+    setSaved(refs);
+    setDirty(false);
+    if (facilityRes.gate && facilityRes.gate.usableForValidatedPlanning === false) {
+      setStatusNote("场地已保存，但规划门禁未通过。手动准备仍会继续。");
+    }
+    return refs;
+  }
+
+  async function prepareLayout(refs: SavedRefs): Promise<PrepareState> {
+    const body = await apiJson<{
+      simulationReady: boolean;
+      prepareStatus: string;
+      validationStatus: string;
+      layoutRevision: string;
+      validationReport?: { checks?: Check[] };
+    }>(`/api/v1/layouts/${refs.layoutId}/prepare-jobs`, {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: refs.projectId,
+        layoutRef: { id: refs.layoutId, revision: refs.layoutRevision },
+        facilityRef: { id: "facility-workbench", revision: refs.facilityRevision },
+        ruleSetRefs: [{ id: "ruleset.m1.geometry", revision: "0.1" }],
+        sync: true,
+      }),
+    });
+    const next: PrepareState = {
+      simulationReady: body.simulationReady,
+      prepareStatus: body.prepareStatus,
+      validationStatus: body.validationStatus,
+      layoutRevision: body.layoutRevision,
+      checks: body.validationReport?.checks ?? [],
+    };
+    setPrepare(next);
+    return next;
+  }
+
+  async function onPrepare() {
     setBusy(true);
     setError(null);
-    setReady(null);
-    setSim(null);
-    const lines: string[] = [];
     try {
-      const pRes = await fetch("/api/v1/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "M1 手动演示", unitSystem: "metric" }),
-      });
-      if (!pRes.ok) throw new Error(`create project ${pRes.status}`);
-      const project = await pRes.json();
-      lines.push(`项目 ${project.id}`);
-
-      const fRes = await fetch(`/api/v1/projects/${project.id}/facility-revisions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ facility: FX01_FACILITY }),
-      });
-      if (!fRes.ok) throw new Error(`facility ${fRes.status}`);
-      lines.push("场地 f-r1 已保存");
-
-      const lRes = await fetch(`/api/v1/layouts/layout-doc-fx01/revisions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          baseRevision: null,
-          document: FX01_LAYOUT,
-        }),
-      });
-      if (!lRes.ok) throw new Error(`layout ${lRes.status}: ${await lRes.text()}`);
-      const saved = await lRes.json();
-      lines.push(`布局修订 ${saved.layoutRef.revision}（保存≠可推演）`);
-
-      const vRes = await fetch(`/api/v1/projects/${project.id}/variants`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "手动方案 A",
-          source: "manual",
-          layoutRef: saved.layoutRef,
-        }),
-      });
-      if (!vRes.ok) throw new Error(`variant ${vRes.status}`);
-      const variant = await vRes.json();
-      lines.push(`方案 ${variant.id} source=manual`);
-
-      const prepRes = await fetch(`/api/v1/layouts/layout-doc-fx01/prepare-jobs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          layoutRef: saved.layoutRef,
-          facilityRef: { id: "facility-fx01", revision: "f-r1" },
-          ruleSetRefs: [{ id: "ruleset.m1.geometry", revision: "0.1" }],
-          sync: true,
-        }),
-      });
-      if (!prepRes.ok) throw new Error(`prepare ${prepRes.status}: ${await prepRes.text()}`);
-      const prep = (await prepRes.json()) as PrepareResult & {
-        simulationReady: boolean;
-        prepareStatus: string;
-        validationStatus: string;
-      };
-      setReady(prep);
-      lines.push(
-        `派生+校验 → prepareStatus=${prep.prepareStatus} simulationReady=${prep.simulationReady} validation=${prep.validationStatus}`,
+      const refs = await persist();
+      const ready = await prepareLayout(refs);
+      setStatusNote(
+        ready.simulationReady
+          ? `已保存并准备。layoutRevision=${ready.layoutRevision}，可以推演。`
+          : "已保存，校验未通过。未启动推演。",
       );
-      setLog(lines.join("\n"));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setLog(lines.join("\n"));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   }
 
-  async function runDesSimulation() {
+  async function onSimulate() {
     setBusy(true);
     setError(null);
-    setReady(null);
-    setSim(null);
-    const lines: string[] = [];
     try {
-      const pRes = await fetch("/api/v1/projects", {
+      const refs = await persist();
+      const ready = await prepareLayout(refs);
+      if (!ready.simulationReady) {
+        setStatusNote("校验未通过，后端拒绝推演。请先看右栏原因。");
+        setView("layout");
+        return;
+      }
+      const rack = elements.find((el) => el.typeElementId.startsWith("ST-"));
+      if (!rack) {
+        setStatusNote("开始推演前需要至少一台托盘货架，用来放置初始库存。");
+        setView("layout");
+        return;
+      }
+      const demandRev = `d-ui-${seq.current++}`;
+      const opRev = `o-ui-${seq.current++}`;
+      const demand = buildSimDemand(outboundQty, demandRev, rack.instanceId);
+      const operating = buildOperating(forkliftCount, opRev);
+      await apiJson("/api/v1/demands", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "M3 DES 演示", unitSystem: "metric" }),
+        body: JSON.stringify({ projectId: refs.projectId, demand }),
       });
-      if (!pRes.ok) throw new Error(`create project ${pRes.status}`);
-      const project = await pRes.json();
-      lines.push(`项目 ${project.id}`);
-
-      await fetch(`/api/v1/projects/${project.id}/facility-revisions`, {
+      await apiJson("/api/v1/operating-profiles", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ facility: FX01_FACILITY }),
+        body: JSON.stringify({ projectId: refs.projectId, operating }),
       });
-
-      const lRes = await fetch(`/api/v1/layouts/layout-doc-fx01/revisions`, {
+      const result = await apiJson<{
+        runId: string;
+        layoutRevision: string;
+        kpi?: { cards?: Cards; secondary?: { completionRate?: number | null; completedTasks?: number; incompleteTasks?: number } };
+        warnings?: Array<{ code: string }>;
+      }>("/api/v1/simulation-jobs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId: project.id,
-          document: FX01_LAYOUT,
-        }),
-      });
-      if (!lRes.ok) throw new Error(`layout ${lRes.status}`);
-      const saved = await lRes.json();
-      lines.push(`布局 ${saved.layoutRef.revision}`);
-
-      const vRes = await fetch(`/api/v1/projects/${project.id}/variants`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "DES 方案",
-          source: "manual",
-          layoutRef: saved.layoutRef,
-        }),
-      });
-      const variant = await vRes.json();
-
-      const prepRes = await fetch(`/api/v1/layouts/layout-doc-fx01/prepare-jobs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          layoutRef: saved.layoutRef,
-          facilityRef: { id: "facility-fx01", revision: "f-r1" },
-          ruleSetRefs: [{ id: "ruleset.m1.geometry", revision: "0.1" }],
-          sync: true,
-        }),
-      });
-      const prep = await prepRes.json();
-      setReady(prep);
-      lines.push(`prepare simulationReady=${prep.simulationReady}`);
-
-      await fetch("/api/v1/demands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, demand: FX_M3_DEMAND }),
-      });
-      await fetch("/api/v1/operating-profiles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, operating: FX_M3_OPERATING }),
-      });
-
-      const simRes = await fetch("/api/v1/simulation-jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          variantRef: { id: variant.id, revision: variant.revision },
+          projectId: refs.projectId,
+          variantRef: { id: refs.variantId, revision: refs.variantRevision },
           scenarioPackage: {
             contractVersion: "0.3",
-            scenarioId: "scenario-fx-m3",
-            demandRef: { id: "demand-fx-m3", revision: "d-m3-1" },
-            operatingRef: { id: "op-fx-m3", revision: "o-m3-1" },
+            scenarioId: "scenario-workbench",
+            demandRef: { id: demand.id, revision: demand.revision },
+            operatingRef: { id: operating.id, revision: operating.revision },
             runControl: {
               horizonSec: 3600,
               seedStreams: { demand: 42, dispatch: 42 },
               demandSampleRef: null,
               metricDefinitionVersion: "metrics-m3-v1",
             },
-            expectedLayoutRevision: saved.layoutRef.revision,
+            expectedLayoutRevision: refs.layoutRevision,
           },
         }),
       });
-      if (!simRes.ok) throw new Error(`simulation ${simRes.status}: ${await simRes.text()}`);
-      const result = (await simRes.json()) as SimResult & {
-        kpiEvidence?: { outboundEvents?: unknown[] };
-        trajectorySummary?: { segmentCount?: number; layoutRevision?: string };
-      };
-      setSim(result);
-      const cards = result.kpi?.cards;
-      lines.push(`DES runId=${result.runId}`);
-      lines.push(
-        `四卡 吞吐=${cards?.throughput?.outboundPalletEq}托 / ${cards?.throughput?.value?.toFixed?.(3)} 托/时；等待均值=${cards?.wait?.meanSec}s (n=${cards?.wait?.sampleCount})；利用率=${cards?.utilization?.value?.toFixed?.(4)}；瓶颈=${cards?.bottleneck?.top1?.entityId ?? cards?.bottleneck?.top1?.note}`,
-      );
-      lines.push(
-        `守恒 ok=${result.inventoryConservation?.ok}；回放绑 layoutRevision=${result.replayBinding?.layoutRevision}；轨迹段=${result.trajectorySummary?.segmentCount}`,
-      );
-      lines.push(
-        `警告: ${(result.warnings || []).map((w) => w.code).join(", ") || "(none)"}`,
-      );
-      lines.push("※ KPI 来自事件，非 UI 演示公式");
-      setLog(lines.join("\n"));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setLog(lines.join("\n"));
+      setSim({
+        runId: result.runId,
+        layoutRevision: result.layoutRevision,
+        cards: result.kpi?.cards ?? {},
+        completionRate: result.kpi?.secondary?.completionRate ?? null,
+        completedTasks: result.kpi?.secondary?.completedTasks ?? null,
+        incompleteTasks: result.kpi?.secondary?.incompleteTasks ?? null,
+        warnings: (result.warnings ?? []).map((item) => item.code),
+      });
+      setStatusNote(`推演完成 runId=${result.runId}。四卡来自事件，不是界面公式。`);
+      setView("results");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   }
 
-  async function runPlanningAdopt() {
+  async function onPlan() {
     setBusy(true);
     setError(null);
-    setReady(null);
-    const lines: string[] = [];
+    setPlanOpen(true);
     try {
-      const pRes = await fetch("/api/v1/projects", {
+      const refs = await persist();
+      await apiJson("/api/v1/demands", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "M2 规划演示", unitSystem: "metric" }),
+        body: JSON.stringify({ projectId: refs.projectId, demand: buildPlanningDemand() }),
       });
-      if (!pRes.ok) throw new Error(`create project ${pRes.status}`);
-      const project = await pRes.json();
-      lines.push(`项目 ${project.id}`);
-
-      const fRes = await fetch(`/api/v1/projects/${project.id}/facility-revisions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ facility: FX01_FACILITY }),
-      });
-      if (!fRes.ok) throw new Error(`facility ${fRes.status}`);
-      const gate = (await fRes.json()).gate;
-      lines.push(
-        `场地确认 gate.usableForValidatedPlanning=${gate?.usableForValidatedPlanning}`,
+      const draft = await apiJson<{ disabledGoals?: Array<{ goal: string; reason: string }> }>(
+        `/api/v1/projects/${refs.projectId}/planning-drafts`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            request: {
+              contractVersion: "0.3",
+              goals: ["capacity", "efficiency", "lifecycle_cost"],
+              evaluationLevel: "quick",
+            },
+          }),
+        },
       );
-
-      await fetch("/api/v1/demands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, demand: FX01_DEMAND }),
-      });
-
-      const empty = {
-        contractVersion: "0.3",
-        id: "layout-empty-ui",
-        revision: "ld-e1",
-        facilityRef: { id: "facility-fx01", revision: "f-r1" },
-        parentRef: null,
-        elements: [],
-        aisles: [],
-        locks: [],
-        catalogVersion: "catalog-mvp@c-r1",
-      };
-      await fetch("/api/v1/layouts/layout-empty-ui/revisions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, baseRevision: null, document: empty }),
-      });
-      const vRes = await fetch(`/api/v1/projects/${project.id}/variants`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "底稿",
-          source: "manual",
-          layoutRef: { id: "layout-empty-ui", revision: "ld-e1" },
-        }),
-      });
-      const variant = await vRes.json();
-      lines.push(`底稿方案 ${variant.id}@${variant.revision}`);
-
-      const draftRes = await fetch(`/api/v1/projects/${project.id}/planning-drafts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          request: {
-            contractVersion: "0.3",
-            goals: ["capacity", "efficiency"],
-            evaluationLevel: "quick",
-          },
-        }),
-      });
-      const draft = await draftRes.json();
-      lines.push(
-        `向导草稿 ${draft.id}；禁用目标: ${(draft.disabledGoals || [])
-          .map((g: { goal: string; reason: string }) => `${g.goal}(${g.reason})`)
-          .join("; ") || "无"}`,
+      setDisabledGoals(
+        (draft.disabledGoals ?? []).map((item) => `${item.goal}：${item.reason}`),
       );
-
-      const planRes = await fetch("/api/v1/planning-jobs", {
+      const plan = await apiJson<{
+        outcome?: string;
+        terminationReason?: string;
+        candidates?: Candidate[];
+      }>("/api/v1/planning-jobs", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contractVersion: "0.3",
-          projectId: project.id,
-          facilityRef: { id: "facility-fx01", revision: "f-r1" },
-          baseVariantRef: { id: variant.id, revision: variant.revision },
-          demandRef: { id: "demand-fx01", revision: "d-r1" },
+          projectId: refs.projectId,
+          facilityRef: { id: "facility-workbench", revision: refs.facilityRevision },
+          baseVariantRef: { id: refs.variantId, revision: refs.variantRevision },
+          demandRef: { id: "demand-plan-ui", revision: "d-plan-1" },
           scope: { mode: "whole" },
           locks: [],
           goals: ["capacity"],
           constraints: { allowedTypeIds: ["ST-PAL-01", "IN-DOCK-01", "OUT-DOCK-01"] },
           evaluationLevel: "quick",
-          budget: {
-            maxConfigurations: 50,
-            maxIterations: 1000,
-            maxWallTimeSec: 30,
-            maxMemoryMb: 512,
-          },
+          budget: { maxConfigurations: 50, maxIterations: 1000, maxWallTimeSec: 30, maxMemoryMb: 512 },
           seed: 42,
           catalogRef: { id: "catalog-mvp", revision: "c-r1" },
           templateSetRef: { id: "template-rect", revision: "t-r1" },
           ruleSetRefs: [],
         }),
       });
-      if (!planRes.ok) throw new Error(`planning ${planRes.status}: ${await planRes.text()}`);
-      const plan = await planRes.json();
-      lines.push(
-        `PlanningJob ${plan.jobId} outcome=${plan.outcome} candidates=${plan.candidates?.length ?? 0}`,
+      setPlanOutcome(
+        [plan.outcome, plan.terminationReason].filter(Boolean).join(" · ") || "无结果",
       );
-      lines.push("※ quick 几何容量/路径估算 ≠ 运营效率验证（M3）");
-
-      const cand = plan.candidates?.[0];
-      if (!cand) throw new Error("no candidate");
-      const adoptRes = await fetch(`/api/v1/candidates/${cand.id}/adoptions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          currentVariantRef: { id: variant.id, revision: variant.revision },
-          newName: "生成方案 A",
-          expectedVariantRevision: variant.revision,
-        }),
-      });
-      if (!adoptRes.ok) throw new Error(`adopt ${adoptRes.status}: ${await adoptRes.text()}`);
-      const adopted = await adoptRes.json();
-      lines.push(
-        `采用 → 新方案 ${adopted.variant.id} layout=${adopted.layoutRef.id}@${adopted.layoutRef.revision}（原底稿未覆盖）`,
-      );
-      setLog(lines.join("\n"));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setLog(lines.join("\n"));
+      setCandidates(plan.candidates ?? []);
+      setStatusNote("规划结束。quick 只是几何/路径估算，不是运营效率。");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   }
 
-  async function runCostCompare() {
+  async function adopt(candidateId: string) {
+    if (!saved) return;
     setBusy(true);
     setError(null);
-    setCompare(null);
-    const lines: string[] = [];
     try {
-      const pRes = await fetch("/api/v1/projects", {
+      const adopted = await apiJson<{
+        variant: { id: string; revision: string };
+        layoutRef: { id: string; revision: string };
+        claimsOperationalEfficiency?: boolean;
+        note?: string;
+      }>(`/api/v1/candidates/${candidateId}/adoptions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "ui-m4", unitSystem: "metric" }),
-      });
-      const project = await pRes.json();
-      lines.push(`项目 ${project.id}`);
-
-      await fetch(`/api/v1/projects/${project.id}/facility-revisions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ facility: FX01_FACILITY }),
-      });
-      await fetch(`/api/v1/layouts/${FX01_LAYOUT.id}/revisions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, baseRevision: null, document: FX01_LAYOUT }),
-      });
-      const vRes = await fetch(`/api/v1/projects/${project.id}/variants`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "对比方案 A",
-          source: "manual",
-          layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
+          projectId: saved.projectId,
+          currentVariantRef: { id: saved.variantId, revision: saved.variantRevision },
+          newName: "生成方案",
+          expectedVariantRevision: saved.variantRevision,
         }),
       });
-      const variant = await vRes.json();
-
-      const prepRes = await fetch(`/api/v1/layouts/${FX01_LAYOUT.id}/prepare-jobs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
-          facilityRef: { id: FX01_FACILITY.id, revision: FX01_FACILITY.revision },
-          sync: true,
-        }),
-      });
-      if (!prepRes.ok) throw new Error(`prepare ${prepRes.status}`);
-      await fetch("/api/v1/demands", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, demand: FX_M3_DEMAND }),
-      });
-      await fetch("/api/v1/operating-profiles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, operating: FX_M3_OPERATING }),
-      });
-      const simRes = await fetch("/api/v1/simulation-jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: project.id,
-          variantRef: { id: variant.id, revision: variant.revision },
-          scenarioPackage: {
-            contractVersion: "0.3",
-            scenarioId: "ui-m4",
-            expectedLayoutRevision: FX01_LAYOUT.revision,
-            runControl: {
-              horizonSec: 3600,
-              seedStreams: { demand: 42, dispatch: 42 },
-              metricDefinitionVersion: "metrics-m3-v1",
-            },
-          },
-          demand: FX_M3_DEMAND,
-          operating: FX_M3_OPERATING,
-        }),
-      });
-      if (!simRes.ok) throw new Error(`sim ${simRes.status}: ${await simRes.text()}`);
-      const simBody = await simRes.json();
-      lines.push(`DES run ${simBody.runId} @ ${simBody.layoutRevision}`);
-
-      await fetch("/api/v1/price-books", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, priceBook: FX_M4_PB_OK }),
-      });
-      await fetch("/api/v1/price-books", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, priceBook: FX_M4_PB_MISS }),
-      });
-      await fetch("/api/v1/cost-bases", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, costBasis: FX_M4_BASIS }),
-      });
-      await fetch("/api/v1/score-profiles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: project.id, scoreProfile: FX_M4_SCORE }),
-      });
-
-      const estOk = await (
-        await fetch("/api/v1/cost-estimate-jobs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: project.id,
-            variantRef: { id: variant.id, revision: variant.revision },
-            priceBookRef: { id: FX_M4_PB_OK.id, revision: FX_M4_PB_OK.revision },
-            costBasisRef: { id: FX_M4_BASIS.id, revision: FX_M4_BASIS.revision },
-            operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
-          }),
-        })
-      ).json();
-      lines.push(
-        `完整成本 ${estOk.costEstimateId} status=${estOk.status} capex=${estOk.totals?.capex}`,
+      const loaded = await apiJson<{ document: unknown }>(
+        `/api/v1/layouts/${adopted.layoutRef.id}/revisions/${adopted.layoutRef.revision}?projectId=${saved.projectId}`,
       );
-
-      const estMiss = await (
-        await fetch("/api/v1/cost-estimate-jobs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: project.id,
-            variantRef: { id: variant.id, revision: variant.revision },
-            priceBookRef: { id: FX_M4_PB_MISS.id, revision: FX_M4_PB_MISS.revision },
-            costBasisRef: { id: FX_M4_BASIS.id, revision: FX_M4_BASIS.revision },
-            operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
-          }),
-        })
-      ).json();
-      lines.push(
-        `缺价成本 ${estMiss.costEstimateId} status=${estMiss.status} total=${estMiss.totals?.total}（不可排最低）`,
-      );
-
-      const rank = await (
-        await fetch("/api/v1/cost-ranking", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: project.id,
-            costEstimateIds: [estMiss.costEstimateId, estOk.costEstimateId],
-          }),
-        })
-      ).json();
-      lines.push(`最低成本赢家 ${rank.winner?.estimateId}；排除 ${rank.excluded?.length ?? 0} 个缺价`);
-
-      const cmp = await (
-        await fetch("/api/v1/comparisons", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: project.id,
-            mode: "layout_only",
-            commonBasis: { engineVersion: "m3-des-0.1" },
-            scoreProfileRef: { id: FX_M4_SCORE.id, revision: FX_M4_SCORE.revision },
-            entries: [
-              {
-                entryId: "complete",
-                label: "完整报价",
-                variantRef: { id: variant.id, revision: variant.revision },
-                layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
-                runId: simBody.runId,
-                costEstimateId: estOk.costEstimateId,
-                operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
-                completedCycleMeanSec: 120,
-              },
-              {
-                entryId: "missing",
-                label: "缺价",
-                variantRef: { id: variant.id, revision: variant.revision },
-                layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
-                costEstimateId: estMiss.costEstimateId,
-                operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
-                completedCycleMeanSec: 110,
-              },
-            ],
-          }),
-        })
-      ).json();
-      lines.push(
-        `比较 radarEnabled=${cmp.comparison?.radar?.radarEnabled}（缺轴不补零；不足三轴仅表格）`,
-      );
-
-      const rpt = await (
-        await fetch("/api/v1/reports", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            projectId: project.id,
-            variantRef: { id: variant.id, revision: variant.revision },
-            layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
-            runId: simBody.runId,
-            costEstimateId: estOk.costEstimateId,
-            comparisonId: cmp.comparison?.id,
-          }),
-        })
-      ).json();
-      lines.push(`报告 ${rpt.reportId} versionConsistent=${rpt.versionConsistent}`);
-
-      setCompare({
-        costCompleteId: estOk.costEstimateId,
-        costIncompleteStatus: estMiss.status,
-        rankingWinner: rank.winner?.estimateId,
-        rankingExcluded: (rank.excluded || []).map((x: { estimateId: string }) => x.estimateId),
-        radarEnabled: cmp.comparison?.radar?.radarEnabled,
-        comparisonMode: cmp.comparison?.mode,
-        reportId: rpt.reportId,
-        versionConsistent: rpt.versionConsistent,
+      remember();
+      setElements(elementsFromDocument(loaded.document));
+      setSaved({
+        ...saved,
+        layoutId: adopted.layoutRef.id,
+        layoutRevision: adopted.layoutRef.revision,
+        variantId: adopted.variant.id,
+        variantRevision: adopted.variant.revision,
       });
-      setLog(lines.join("\n"));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setLog(lines.join("\n"));
+      setDirty(false);
+      setPrepare(null);
+      setPlanOpen(false);
+      setSelectedId(null);
+      setStatusNote(
+        adopted.claimsOperationalEfficiency
+          ? "采用返回了不应出现的效率声明。"
+          : "已采用为新方案分支，原底稿未覆盖。需重新准备后才能推演。",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   }
 
+  async function onRecognize() {
+    setBusy(true);
+    setError(null);
+    try {
+      const refs = saved ?? (await persist());
+      const mediaType = recFile.toLowerCase().endsWith(".dxf")
+        ? "application/dxf"
+        : recFile.toLowerCase().endsWith(".png")
+          ? "image/png"
+          : "application/pdf";
+      const drawing = await apiJson<{ id: string }>(`/api/v1/projects/${refs.projectId}/drawings`, {
+        method: "POST",
+        body: JSON.stringify({
+          filename: recFile || "untitled",
+          status: "uploaded",
+          meta: recCapability === "polygon_height_partition" ? { scaleDeclared: true } : {},
+        }),
+      });
+      const result = await apiJson<{
+        status: string;
+        failure?: { code: string; message: string };
+        correction?: { message: string };
+        producedGeometry: unknown;
+        claimsValidatedGeometry: boolean;
+        score?: number | null;
+      }>("/api/v1/recognition-jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: refs.projectId,
+          drawingId: drawing.id,
+          capability: recCapability,
+          source: {
+            filename: recFile,
+            mediaType,
+            scaleDeclared: recCapability === "polygon_height_partition",
+            ocrConfidence: recCapability === "ocr_assist" ? 0.99 : undefined,
+            floors: 1,
+            heightZones: 1,
+          },
+        }),
+      });
+      setRecognition({
+        capability: recCapability,
+        status: result.status,
+        code: result.failure?.code ?? "UNKNOWN",
+        message: result.failure?.message ?? "无说明",
+        correction: result.correction?.message ?? "",
+        score: null,
+        horizonCost: null,
+      });
+      if (result.producedGeometry || result.claimsValidatedGeometry) {
+        setError("识图接口返回了几何，这与 M5 失败路径不符。");
+      } else {
+        setStatusNote("识图未生成场地。底图仍在，请按校正说明手工处理。");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadFailures() {
+    setBusy(true);
+    setError(null);
+    try {
+      const projectId = saved?.projectId;
+      const cards: FailureCard[] = [];
+      for (const capability of ADVANCED) {
+        const inputs =
+          capability === "lifecycle_cost"
+            ? {
+                horizonYears: 5,
+                feeComplete: true,
+                capex: 100000,
+                annualOpex: 20000,
+                discountRequested: true,
+                discountRate: 0.08,
+              }
+            : capability === "multi_objective"
+              ? { goals: ["lifecycle_cost", "easy_automation", "expandable"] }
+              : capability === "calibrated_automation"
+                ? { equipment: ["AGV"], calibrated: false }
+                : {};
+        const result = await apiJson<{
+          status: string;
+          failure?: { code: string; message: string };
+          correction?: { message: string };
+          score: number | null;
+          horizonCost: number | null;
+          claimsBetterThanBaseline: boolean;
+        }>("/api/v1/advanced-evaluations", {
+          method: "POST",
+          body: JSON.stringify({ projectId, capability, inputs }),
+        });
+        cards.push({
+          capability,
+          status: result.status,
+          code: result.failure?.code ?? "UNKNOWN",
+          message: result.failure?.message ?? "",
+          correction: result.correction?.message ?? "",
+          score: result.score,
+          horizonCost: result.horizonCost,
+        });
+        if (result.claimsBetterThanBaseline || result.score !== null || result.horizonCost !== null) {
+          throw new Error(`${capability} 返回了不该出现的分数或收益`);
+        }
+      }
+      setFailures(cards);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onCanvasClick(event: React.MouseEvent<SVGSVGElement>) {
+    if (!armed) return;
+    const svg = event.currentTarget;
+    const point = svg.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return;
+    const loc = point.matrixTransform(matrix.inverse());
+    place(armed, loc.x, depthM - loc.y);
+  }
+
+  const failedChecks = (prepare?.checks ?? []).filter((check) => check.status !== "pass");
+  const saveLabel = dirty
+    ? "未保存"
+    : prepare?.simulationReady
+      ? "可推演"
+      : prepare
+        ? "校验未通过"
+        : saved
+          ? "已保存"
+          : "未保存";
+
   return (
-    <main className="shell">
-      <h1 className="brand">simapp</h1>
-      <p className="lead">
-        仓库布局规划与运营推演 · M4 成本/对比闭环。外层契约 {CONTRACT_VERSION}；Snapshot / equip{" "}
-        {SNAPSHOT_SCHEMA_VERSION} / {EQUIP_SCHEMA_VERSION}。缺价不排最低成本；缺轴不补分；报告绑历史修订。
-      </p>
-      <div className="cta">
-        <button type="button" onClick={pingApi} disabled={busy}>
-          {busy ? "请求中…" : "探测 API /health"}
+    <div className="workbench">
+      <header className="topbar">
+        <div>
+          <strong>simapp</strong>
+          <span className="muted"> 布局工作台</span>
+        </div>
+        <div className="muted">
+          契约 {CONTRACT_VERSION} · Snapshot {SNAPSHOT_SCHEMA_VERSION} · equip {EQUIP_SCHEMA_VERSION}
+        </div>
+        <div className={dirty ? "pill warn" : "pill"}>{saveLabel}</div>
+      </header>
+      <nav className="views">
+        {(
+          [
+            ["layout", "布局工作台"],
+            ["results", "推演结果"],
+            ["compare", "方案对比"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={view === id ? "tab active" : "tab"}
+            onClick={() => setView(id)}
+          >
+            {label}
+          </button>
+        ))}
+        <span className="spacer" />
+        <button type="button" className="ghost" onClick={undo} disabled={busy}>
+          撤销
         </button>
-        <button type="button" onClick={runManualPrepare} disabled={busy}>
-          手动路径：保存并推演准备
+        <button type="button" className="ghost" onClick={() => setPlanOpen(true)} disabled={busy}>
+          帮我生成布局
         </button>
-        <button type="button" onClick={runDesSimulation} disabled={busy}>
-          M3：prepare 后真实推演
-        </button>
-        <button type="button" onClick={runPlanningAdopt} disabled={busy}>
-          可选规划：生成并采用分支
-        </button>
-        <button type="button" onClick={runCostCompare} disabled={busy}>
-          M4：成本估算与多方案对比
-        </button>
-        <a className="note" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">
-          OpenAPI docs
-        </a>
-      </div>
-      <section className="panel">
-        <dl className="meta">
-          <dt>milestone</dt>
-          <dd>M4 · DEV-12–14</dd>
-          <dt>成本/对比</dt>
-          <dd>BOM×价目；缺价 knownSubtotal；layout_only / whole_solution；雷达缺轴不补零</dd>
-          <dt>3D map sample</dt>
-          <dd>
-            (12,14,yaw30) @1.5m → ({sample.position.x}, {sample.position.y}, {sample.position.z}),
-            yawY={sample.yawYDeg}°
-          </dd>
-        </dl>
-        {error ? <p className="note">错误：{error}</p> : null}
-        {health ? <pre>{JSON.stringify(health, null, 2)}</pre> : null}
-        {log ? <pre>{log}</pre> : null}
-        {ready ? (
-          <pre>
-            {JSON.stringify(
-              {
-                simulationReady: ready.simulationReady,
-                prepareStatus: ready.prepareStatus,
-                validationStatus: ready.validationStatus,
-                layoutRevision: ready.layoutRevision,
-              },
-              null,
-              2,
+      </nav>
+
+      {view === "layout" ? (
+        <div className="body">
+          <aside className="library">
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索设备"
+              aria-label="搜索设备"
+            />
+            {CATEGORIES.map((category) => (
+              <section key={category}>
+                <h2>{category}</h2>
+                {filtered
+                  .filter((item) => item.category === category)
+                  .map((item) => (
+                    <button
+                      key={item.typeElementId}
+                      type="button"
+                      className={armed?.typeElementId === item.typeElementId ? "lib on" : "lib"}
+                      onClick={() => setArmed(item)}
+                    >
+                      <span>{item.name}</span>
+                      <small>
+                        {item.typeElementId} · {item.footprintW}×{item.footprintD} m
+                      </small>
+                    </button>
+                  ))}
+              </section>
+            ))}
+            <p className="hint">目录与派生器缺省 footprint 一致，盒子代理，不是生产 GLB。</p>
+          </aside>
+
+          <section className="stage">
+            <div className="toolbar">
+              <button type="button" onClick={applyTemplate} disabled={busy}>
+                使用矩形模板
+              </button>
+              <button
+                type="button"
+                onClick={() => armed && place(armed, widthM / 2, depthM / 2)}
+                disabled={!armed || busy}
+              >
+                放到场地中心
+              </button>
+              <button type="button" onClick={() => void onPlan()} disabled={busy}>
+                帮我生成布局
+              </button>
+              <span className="spacer" />
+              <button type="button" className="primary" onClick={() => void onPrepare()} disabled={busy}>
+                校验并准备
+              </button>
+              <button type="button" className="primary" onClick={() => void onSimulate()} disabled={busy}>
+                开始推演
+              </button>
+            </div>
+            <svg
+              className={armed ? "canvas armed" : "canvas"}
+              viewBox={`0 0 ${widthM} ${depthM}`}
+              onClick={onCanvasClick}
+              role="img"
+              aria-label="布局画布，北在上，单位米"
+            >
+              <rect x={0} y={0} width={widthM} height={depthM} className="floor" />
+              <line
+                x1={2}
+                y1={depthM - aisleYM}
+                x2={Math.max(widthM - 2, 2)}
+                y2={depthM - aisleYM}
+                className="aisle"
+                strokeWidth={aisleWidthM}
+              />
+              {elements.map((el) => {
+                const w = el.params.footprintW ?? libraryItem(el.typeElementId)?.footprintW ?? 1;
+                const d = el.params.footprintD ?? libraryItem(el.typeElementId)?.footprintD ?? 1;
+                const active = el.instanceId === selectedId;
+                return (
+                  <g
+                    key={el.instanceId}
+                    transform={`translate(${el.x} ${depthM - el.y}) rotate(${-el.yawDeg})`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (armed) return;
+                      setSelectedId(el.instanceId);
+                    }}
+                  >
+                    <rect
+                      x={-w / 2}
+                      y={-d / 2}
+                      width={w}
+                      height={d}
+                      className={active ? "eq on" : "eq"}
+                    />
+                    <text className="eq-label" y={4}>
+                      {libraryItem(el.typeElementId)?.name ?? el.typeElementId}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+            <footer className="statusbar">
+              <span>{statusNote}</span>
+              <span>
+                {elements.length} 个设备 · 通道 {aisleWidthM} m · {armed ? `放置 ${armed.name}` : "选择设备后点击画布"}
+              </span>
+            </footer>
+          </section>
+
+          <aside className="inspector">
+            {selected ? (
+              <>
+                <h2>{libraryItem(selected.typeElementId)?.name ?? selected.typeElementId}</h2>
+                <p className="hint">{selected.instanceId}</p>
+                {(["x", "y", "yawDeg"] as const).map((key) => (
+                  <label key={key}>
+                    {key === "yawDeg" ? "朝向 °" : key === "x" ? "X 东 (m)" : "Y 北 (m)"}
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={selected[key]}
+                      onChange={(event) =>
+                        updateSelected({ [key]: Number(event.target.value) } as Partial<PlacedElement>)
+                      }
+                    />
+                  </label>
+                ))}
+                {Object.entries(selected.params).map(([key, value]) => (
+                  <label key={key}>
+                    {key}
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={value}
+                      onChange={(event) =>
+                        updateSelected(
+                          {},
+                          {
+                            ...selected.params,
+                            [key]: Number(event.target.value),
+                          },
+                        )
+                      }
+                    />
+                  </label>
+                ))}
+                <button type="button" className="danger" onClick={() => removeSelected(selected.instanceId)}>
+                  删除设备
+                </button>
+              </>
+            ) : (
+              <>
+                <h2>场地与推演输入</h2>
+                <label>
+                  场地宽 X (m)
+                  <input
+                    type="number"
+                    min={4}
+                    step="0.5"
+                    value={widthM}
+                    onChange={(event) => {
+                      setWidthM(Number(event.target.value));
+                      setDirty(true);
+                    }}
+                  />
+                </label>
+                <label>
+                  场地深 Y (m)
+                  <input
+                    type="number"
+                    min={4}
+                    step="0.5"
+                    value={depthM}
+                    onChange={(event) => {
+                      setDepthM(Number(event.target.value));
+                      setDirty(true);
+                    }}
+                  />
+                </label>
+                <label>
+                  主通道宽 (m)
+                  <input
+                    type="number"
+                    min={0.5}
+                    step="0.1"
+                    value={aisleWidthM}
+                    onChange={(event) => {
+                      setAisleWidthM(Number(event.target.value));
+                      setDirty(true);
+                    }}
+                  />
+                </label>
+                <label>
+                  主通道 Y (m)
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={aisleYM}
+                    onChange={(event) => {
+                      setAisleYM(Number(event.target.value));
+                      setDirty(true);
+                    }}
+                  />
+                </label>
+                <label>
+                  出库托数（推演输入）
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={outboundQty}
+                    onChange={(event) => setOutboundQty(Number(event.target.value))}
+                  />
+                </label>
+                <label>
+                  叉车数量（推演输入）
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={forkliftCount}
+                    onChange={(event) => setForkliftCount(Number(event.target.value))}
+                  />
+                </label>
+                <p className="hint">这些是提交给 DES 的输入。吞吐、等待、利用率和瓶颈只在跑完后显示。</p>
+              </>
             )}
-          </pre>
-        ) : null}
-        {sim ? (
-          <pre>
-            {JSON.stringify(
-              {
-                runId: sim.runId,
-                layoutRevision: sim.layoutRevision,
-                cards: sim.kpi?.cards,
-                conservation: sim.inventoryConservation,
-                replayBinding: sim.replayBinding,
-                warningCodes: (sim.warnings || []).map((w) => w.code),
-              },
-              null,
-              2,
+            <h2>校验</h2>
+            {!prepare ? <p className="hint">尚未准备。</p> : null}
+            {prepare?.simulationReady ? <p className="ok">simulationReady · {prepare.layoutRevision}</p> : null}
+            {failedChecks.map((check) => (
+              <p key={check.ruleId} className={check.status === "fail" ? "bad" : "warntext"}>
+                {check.status} · {check.message}
+              </p>
+            ))}
+            <h2>复杂识图</h2>
+            <label>
+              能力
+              <select value={recCapability} onChange={(event) => setRecCapability(event.target.value)}>
+                <option value="dxf_vector_extract">DXF 矢量提取</option>
+                <option value="ocr_assist">OCR 辅助</option>
+                <option value="polygon_height_partition">多边形/高度分区</option>
+              </select>
+            </label>
+            <label>
+              文件名（不上传内容）
+              <input value={recFile} onChange={(event) => setRecFile(event.target.value)} />
+            </label>
+            <button type="button" onClick={() => void onRecognize()} disabled={busy}>
+              尝试识别
+            </button>
+            {recognition ? (
+              <div className="failcard">
+                <strong>
+                  {recognition.status} · {recognition.code}
+                </strong>
+                <p>{recognition.message}</p>
+                <p>{recognition.correction}</p>
+              </div>
+            ) : (
+              <p className="hint">识别不会生成精确场地，也不会把高置信度当成已确认。</p>
             )}
-          </pre>
-        ) : null}
-        {compare ? <pre>{JSON.stringify(compare, null, 2)}</pre> : null}
-        <p className="note">
-          夹具：<code>npm run validate:fixtures</code> · M1：<code>npm run test:m1</code> · M2：
-          <code>npm run test:m2</code> · M3：<code>npm run test:m3</code> · M4：
-          <code>npm run test:m4</code>
-        </p>
-      </section>
-    </main>
+          </aside>
+        </div>
+      ) : null}
+
+      {view === "results" ? (
+        <section className="sheet">
+          <h2>单方案四卡</h2>
+          <p className="hint">四卡来自本次跑次的事件，不是界面公式。</p>
+          {dirty && sim ? <p className="warntext">布局已改，下面仍是上一跑次 {sim.layoutRevision}。</p> : null}
+          {!sim ? <p>还没有跑次。在布局工作台保存并准备后开始推演。</p> : null}
+          {sim ? (
+            <>
+              <p className="hint">
+                run {sim.runId} · layoutRevision {sim.layoutRevision} · 完成率 {fmt(sim.completionRate)} · 完成{" "}
+                {sim.completedTasks ?? "—"} / 未完成 {sim.incompleteTasks ?? "—"}
+              </p>
+              <div className="cards">
+                <article>
+                  <h3>吞吐</h3>
+                  <p className="kpi">{fmt(sim.cards.throughput?.value, 3)}</p>
+                  <p>{sim.cards.throughput?.unit ?? "palletEq/h"}</p>
+                  <p>外部发运 {sim.cards.throughput?.outboundPalletEq ?? "—"} 托当量</p>
+                </article>
+                <article>
+                  <h3>等待</h3>
+                  <p className="kpi">{fmt(sim.cards.wait?.meanSec, 1)}</p>
+                  <p>均值秒 · P95 {fmt(sim.cards.wait?.p95Sec, 1)}</p>
+                  <p>样本 {sim.cards.wait?.sampleCount ?? "—"}</p>
+                </article>
+                <article>
+                  <h3>利用率</h3>
+                  <p className="kpi">{fmt(sim.cards.utilization?.value, 3)}</p>
+                  <p>{sim.cards.utilization?.unit ?? "ratio"}</p>
+                  <p>{sim.cards.utilization?.note ?? ""}</p>
+                </article>
+                <article>
+                  <h3>瓶颈</h3>
+                  <p className="kpi small">{sim.cards.bottleneck?.top1?.entityId ?? "—"}</p>
+                  <p>{sim.cards.bottleneck?.top1?.note ?? `等待 ${fmt(sim.cards.bottleneck?.top1?.waitSec, 1)} s`}</p>
+                </article>
+              </div>
+              {sim.warnings.length ? <p className="hint">警告：{sim.warnings.join("、")}</p> : null}
+              <button type="button" onClick={() => setView("layout")}>
+                回到布局修改
+              </button>
+            </>
+          ) : null}
+        </section>
+      ) : null}
+
+      {view === "compare" ? (
+        <section className="sheet">
+          <h2>M5 扩展不参与打分</h2>
+          <p>
+            多方案的库容、效率和初投仍走 M4 的比较接口。生命周期、扩容、运维和 NSGA-II 在本切片没有结果，缺轴不补 0，这里也不画雷达。
+          </p>
+          <button type="button" className="primary" onClick={() => void loadFailures()} disabled={busy}>
+            探测不支持项
+          </button>
+          <div className="failgrid">
+            {failures.map((card) => (
+              <article key={card.capability}>
+                <h3>{card.capability}</h3>
+                <p>
+                  {card.status} · {card.code}
+                </p>
+                <p>{card.message}</p>
+                <p className="hint">{card.correction}</p>
+                <p>score={card.score === null ? "null" : card.score} · horizonCost={String(card.horizonCost)}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {error ? <p className="banner">{error}</p> : null}
+      {busy ? <p className="banner quiet">请求中…</p> : null}
+
+      {planOpen ? (
+        <div className="drawer-back" onClick={() => setPlanOpen(false)}>
+          <div className="drawer" onClick={(event) => event.stopPropagation()}>
+            <h2>帮我生成布局</h2>
+            <p className="hint">可选入口。生成新候选，不覆盖当前方案。评价级别 quick，不是运营效率验证。</p>
+            <button type="button" className="primary" onClick={() => void onPlan()} disabled={busy}>
+              按容量目标生成
+            </button>
+            {disabledGoals.length ? (
+              <ul>
+                {disabledGoals.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            ) : null}
+            {planOutcome ? <p>结果：{planOutcome}</p> : null}
+            {candidates.length === 0 && planOutcome ? <p>本次没有可用候选，不会凑数。</p> : null}
+            {candidates.map((candidate) => {
+              const cap = candidate.metrics?.geometricPalletCapacity;
+              return (
+                <article key={candidate.id} className="cand">
+                  <strong>{candidate.id}</strong>
+                  <p>
+                    {candidate.evaluationLevel} · 几何库容 {cap?.value ?? "—"} {cap?.unit ?? ""}（估算）
+                  </p>
+                  <p className="hint">
+                    {candidate.claimsOperationalEfficiency ? "异常：宣称了运营效率" : "未宣称运营效率"}
+                  </p>
+                  <button type="button" onClick={() => void adopt(candidate.id)} disabled={busy}>
+                    采用并编辑
+                  </button>
+                </article>
+              );
+            })}
+            <button type="button" className="ghost" onClick={() => setPlanOpen(false)}>
+              关闭
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }

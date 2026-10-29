@@ -124,7 +124,7 @@ def test_api_adopt_and_conflict() -> None:
     client = TestClient(app)
     health = client.get("/api/v1/health").json()
     # M3 起 milestone 前进；规划路径仍独立，且 quick 候选不得宣称运营效率
-    assert health["milestone"] in {"M2", "M3", "M4"}
+    assert health["milestone"] in {"M2", "M3", "M4", "M5"}
     assert health["capabilities"]["planning"] is True
     assert health["capabilities"]["manualLayout"] is True
     assert health["capabilities"]["kpiFromUiDemo"] is False

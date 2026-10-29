@@ -7,7 +7,8 @@
     "M1 派生/碰撞/窄通道/跨墙语义见 scripts/run_m1_checks.py（prepareExpect）。",
     "M2 规划/锁定/采用语义见 scripts/run_m2_checks.py。",
     "M3 DES/四卡/回放见 scripts/run_m3_checks.py；KPI 由事件核对，非 UI 演示公式。",
-    "M4 BOM/成本/比较见 scripts/run_m4_checks.py；缺价不排最低成本；缺轴不补零。"
+    "M4 BOM/成本/比较见 scripts/run_m4_checks.py；缺价不排最低成本；缺轴不补零。",
+    "M5 识图/NSGA-II/长期成本见 scripts/run_m5_checks.py；每项为失败或不支持，不宣称未实现能力。"
   ],
   "entries": [
     {

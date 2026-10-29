@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: simapp API
-  version: 0.3.4
+  version: 0.3.5
   description: |
     仓库布局规划与运营推演应用 API。
     外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
+    M5：识图（/recognition-jobs）与高级优化（/advanced-evaluations）只返回失败或不支持，不产出几何或分数。
     M4：BOM/成本（/cost-estimate-jobs）、比较（/comparisons）、报告（/reports）；
     缺价不排最低成本；缺轴不补零；layout_only vs whole_solution。
     M3：真实 DES（/simulation-jobs、/runs）；四卡由事件派生；回放绑历史 layoutRevision。
@@ -22,6 +23,7 @@ tags:
   - name: cost
   - name: comparison
   - name: reports
+  - name: extensions
   - name: jobs
 paths:
   /health:
@@ -409,6 +411,22 @@ paths:
       responses:
         "200":
           description: report
+  /recognition-jobs:
+    post:
+      tags: [extensions]
+      summary: DEV-15 recognition failure path; does not write facility geometry
+      operationId: createRecognitionJob
+      responses:
+        "200":
+          description: explicit failure, needs_confirmation, or unsupported
+  /advanced-evaluations:
+    post:
+      tags: [extensions]
+      summary: DEV-16 NSGA-II / lifecycle / scales explicit unsupported path
+      operationId: createAdvancedEvaluation
+      responses:
+        "200":
+          description: unsupported or failed; score and candidates empty
 components:
   parameters:
     projectId:

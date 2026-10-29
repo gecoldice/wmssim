@@ -340,7 +340,7 @@ def test_api_e2e() -> None:
     client = TestClient(app)
 
     h = client.get("/api/v1/health").json()
-    assert h["milestone"] == "M4"
+    assert h["milestone"] in {"M4", "M5"}
     assert h["capabilities"]["missingPriceBlocksLowestCost"] is True
 
     project = client.post(

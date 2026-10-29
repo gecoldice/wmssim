@@ -1,4 +1,4 @@
-"""simapp API — M4 成本/比较 + M3 DES + M2 规划 + M1 手动路径。"""
+"""simapp API — M5 扩展失败路径 + M4 成本/比较 + M3 DES + M2 规划 + M1 手动路径。"""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from simapp_compare import (
 from simapp_cost import COST_ENGINE_VERSION, CostError, estimate_cost, recommend_lowest_capex
 from simapp_derive import derive_layout_snapshot, derived_index, input_fingerprint
 from simapp_des import ENGINE_VERSION, DesError, run_des
+from simapp_extend import EXTEND_VERSION, assess_advanced, assess_recognition
 from simapp_plan import adopt_candidate, run_planning_job
 from simapp_plan.confirm import FacilityGateError, assert_facility_usable_for_planning, facility_confirmation_status
 from simapp_plan.locks import LockConflictError, assert_locks_preserved
@@ -33,8 +34,11 @@ ROOT = Path(__file__).resolve().parents[3]
 
 app = FastAPI(
     title="simapp API",
-    version="0.3.4",
-    description="M4 cost/BOM/compare/report; M3 DES; M2 planning; M1 manual prepare.",
+    version="0.3.5",
+    description=(
+        "M5 recognition/advanced explicit unsupported paths; "
+        "M4 cost/BOM/compare/report; M3 DES; M2 planning; M1 manual prepare."
+    ),
 )
 
 app.add_middleware(
@@ -198,10 +202,11 @@ def health() -> Dict[str, Any]:
         "contractVersion": CONTRACT_VERSION,
         "snapshotSchemaVersion": "0.2",
         "equipSchemaVersion": "0.2",
-        "milestone": "M4",
+        "milestone": "M5",
         "engineVersion": ENGINE_VERSION,
         "costEngineVersion": COST_ENGINE_VERSION,
         "compareEngineVersion": COMPARE_ENGINE_VERSION,
+        "extendVersion": EXTEND_VERSION,
         "capabilities": {
             "manualLayout": True,
             "deriveValidate": True,
@@ -219,6 +224,24 @@ def health() -> Dict[str, Any]:
             "deliveryReport": True,
             "missingPriceBlocksLowestCost": True,
             "missingAxisNoZeroFill": True,
+            "recognitionImplemented": False,
+            "nsga2Implemented": False,
+            "lifecycleCostImplemented": False,
+            "claimsUnimplementedM5": False,
+            "recognition": {
+                "dxfVectorExtract": False,
+                "ocrAssist": False,
+                "polygonHeightPartition": False,
+            },
+            "advanced": {
+                "nsga2": False,
+                "multiObjectiveBeyondBaseline": False,
+                "lifecycleCost": False,
+                "expansionScale": False,
+                "operabilityScale": False,
+                "calibratedAutomation": False,
+                "claimsBenefitOverBaseline": False,
+            },
         },
         "contractsRoot": str(ROOT / "contracts"),
     }
@@ -1295,3 +1318,97 @@ def get_report(report_id: str) -> Dict[str, Any]:
     if not doc:
         raise _error("NOT_FOUND", f"report {report_id} not found", status=404)
     return doc
+
+
+class RecognitionJobRequest(BaseModel):
+    projectId: str
+    capability: str
+    drawingId: Optional[str] = None
+    source: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AdvancedEvalRequest(BaseModel):
+    projectId: Optional[str] = None
+    capability: str
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/api/v1/recognition-jobs", status_code=200)
+def create_recognition_job(body: RecognitionJobRequest) -> Dict[str, Any]:
+    """DEV-15：识图能力只返回失败/待确认/不支持。不写场地，不删底图。"""
+    if not STORE.get_project(body.projectId):
+        raise _error("NOT_FOUND", f"project {body.projectId} not found", status=404)
+    drawing = None
+    if body.drawingId:
+        drawing = STORE.get_drawing(body.projectId, body.drawingId)
+        if not drawing:
+            raise _error("NOT_FOUND", "drawing not found", status=404)
+    head_before = STORE.projects[body.projectId].facility_head
+    assessed = assess_recognition(
+        capability=body.capability,
+        source=body.source,
+        drawing=drawing,
+    )
+    job_id = f"recjob-{uuid4().hex[:10]}"
+    job = {
+        "id": job_id,
+        "kind": "recognition",
+        "state": "succeeded",
+        "phase": "rejected",
+        "outcome": assessed["status"],
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "finishedAt": datetime.now(timezone.utc).isoformat(),
+        "error": None,
+        "resultRefs": {
+            "capability": body.capability,
+            "drawingId": body.drawingId,
+            "producedGeometry": None,
+            "claimsValidatedGeometry": False,
+        },
+        "assessment": assessed,
+    }
+    STORE.attach_job(body.projectId, job)
+    if body.drawingId:
+        still = STORE.get_drawing(body.projectId, body.drawingId)
+        if not still:
+            raise _error("COMPUTATION_FAILED", "识图失败路径意外删除了底图", status=500)
+        assessed["drawingRetained"] = True
+        assessed["drawingStatus"] = still.get("status")
+    else:
+        assessed["drawingRetained"] = False
+    head_after = STORE.projects[body.projectId].facility_head
+    assessed["facilityHeadUnchanged"] = head_before == head_after
+    assessed["facilityWritten"] = False
+    if head_before != head_after:
+        raise _error("COMPUTATION_FAILED", "识图失败路径意外写入了场地", status=500)
+    return {"jobId": job_id, "state": "succeeded", **assessed}
+
+
+@app.post("/api/v1/advanced-evaluations", status_code=200)
+def create_advanced_evaluation(body: AdvancedEvalRequest) -> Dict[str, Any]:
+    """DEV-16：自动化/多目标/长期成本只返回不支持。不产生分数或候选。"""
+    if body.projectId and not STORE.get_project(body.projectId):
+        raise _error("NOT_FOUND", f"project {body.projectId} not found", status=404)
+    assessed = assess_advanced(capability=body.capability, inputs=body.inputs)
+    job_id = f"advjob-{uuid4().hex[:10]}"
+    if body.projectId:
+        STORE.attach_job(
+            body.projectId,
+            {
+                "id": job_id,
+                "kind": "advanced",
+                "state": "succeeded",
+                "phase": "rejected",
+                "outcome": assessed["status"],
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "finishedAt": datetime.now(timezone.utc).isoformat(),
+                "error": None,
+                "resultRefs": {
+                    "capability": body.capability,
+                    "score": None,
+                    "claimsBetterThanBaseline": False,
+                },
+                "assessment": assessed,
+            },
+        )
+    return {"jobId": job_id, "state": "succeeded", **assessed}

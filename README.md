@@ -1,58 +1,49 @@
 # simapp · 仓库布局规划与运营推演
 
 工程根：`/Users/lovewinnie/wmssim/simapp`  
-方案权威：`/Users/lovewinnie/wmssim/simulation`（尤其 `04-总体与详细设计/` v0.3）
+方案权威：`/Users/lovewinnie/wmssim/simulation`（尤其 `04-总体与详细设计/` v0.3）  
+远程：本机没有可用的 `gh` 登录，仓库仍无 `origin`。
 
-**当前阶段：M4（成本/BOM 与多方案对比闭环）** — DEV-12–14。缺价显式 `missingItems`，不得参与「最低成本」排序；比较支持 `layout_only` / `whole_solution`；雷达缺轴不补零（共同轴 &lt;3 仅表格）；交付报告绑定历史 `layoutRevision` / `run`。
+**当前阶段：M5 切片（工作台 + 扩展失败路径）** — 在 M1–M4 之上。
 
-> M3 DES 仍为运营效率证据来源。M2 `evaluationLevel=quick` 仅为几何/路径估算。
+- 工作台：左元素库 / 中画布 / 右参数。手动摆放 → 保存 → 校验并准备 → 跑 DES → 四卡。可选「帮我生成布局」。
+- 四卡、库容和成本只显示接口结果。不使用 `03-UI原型` 的演示公式。
+- DEV-15 识图（DXF / OCR / 多边形分区）与 DEV-16（NSGA-II、多目标、长期成本、扩容/运维量表、未校准自动化）**只返回失败或不支持**，不生成几何、分数或收益。
+
+> M3 DES 仍是运营效率证据。M2 `evaluationLevel=quick` 只是几何/路径估算。M4 缺价不排最低成本，缺轴不补分。
 
 ## 版本口径
 
 | 层 | 版本 |
 |---|---|
-| 外层对象（Project / Facility / Demand / CostEstimate / ComparisonSet / …） | `contractVersion = "0.3"` |
-| 布局 Snapshot（推演只读） | `schemaVersion = "0.2"` |
+| 外层对象 | `contractVersion = "0.3"` |
+| 布局 Snapshot | `schemaVersion = "0.2"` |
 | equip.json | `schema_version = "0.2"` |
 | 派生器 | `derivationVersion = m1-derive-0.1` |
 | 规划器 | `plannerVersion = m2-plan-baseline-0.1` |
 | DES 引擎 | `engineVersion = m3-des-0.1` |
 | 成本引擎 | `costEngineVersion = m4-cost-0.1` |
 | 比较引擎 | `compareEngineVersion = m4-compare-0.1` |
+| 扩展切片 | `extendVersion = m5-extend-0.1`（能力未实现） |
 | 指标定义 | `metricDefinitionVersion = metrics-m3-v1` |
 
-坐标：平面米制，原点仓房西南角，**X 东 Y 北**；3D `(X,Y,Z)=(x, 高度, -y)`。  
-**禁止**把 `03-UI原型` HTML 演示公式带进计算层。
+坐标：平面米制，原点仓房西南角，**X 东 Y 北**；3D `(X,Y,Z)=(x, 高度, -y)`。画布北在上。
 
 ## 目录
 
 ```text
 simapp/
-├── apps/web/                      # React 工作台（手动 / 规划 / DES / 成本对比）
-├── services/api/                  # FastAPI：prepare / planning / simulation / cost / compare / reports
-├── services/worker/               # 能力探测
+├── apps/web/                      # 布局工作台（库 / 画布 / 参数 / 四卡）
+├── services/api/                  # FastAPI
+├── services/worker/               # 能力探测（识图与 NSGA-II 标为未实现）
 ├── contracts/
-│   ├── schemas/v0.2/              # Snapshot + equip
-│   ├── schemas/v0.3/              # 外层 + Cost/Comparison
-│   └── openapi/openapi.yaml
 ├── packages/contracts-ts/
 ├── shared/python/
-│   ├── simapp_contracts/
-│   ├── simapp_units/
-│   ├── simapp_geometry/
-│   ├── simapp_derive/
-│   ├── simapp_validate/
-│   ├── simapp_plan/
-│   ├── simapp_des/                # M3 DES
-│   ├── simapp_cost/               # M4 BOM / CostEstimate / 最低成本推荐
-│   └── simapp_compare/            # M4 ComparisonSet / 雷达 / 交付报告
+│   ├── simapp_derive/ simapp_validate/ simapp_plan/
+│   ├── simapp_des/ simapp_cost/ simapp_compare/
+│   └── simapp_extend/             # M5 失败/不支持路径
 ├── fixtures/{valid,invalid}/
-└── scripts/
-    ├── validate_fixtures.py
-    ├── run_m1_checks.py
-    ├── run_m2_checks.py
-    ├── run_m3_checks.py
-    └── run_m4_checks.py
+└── scripts/run_m1_checks.py … run_m5_checks.py
 ```
 
 ## 本地运行
@@ -62,13 +53,12 @@ simapp/
 ```bash
 cd /Users/lovewinnie/wmssim/simapp
 npm install
-# 推荐 Python 3.11（本机 python3 若为 3.14，jsonschema/rpds-py 可能无轮子）
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r services/api/requirements.txt
 ```
 
-### 2. 校验 schema / 夹具 + M1–M4
+### 2. 校验与测试
 
 ```bash
 source .venv/bin/activate
@@ -77,63 +67,49 @@ npm run test:m1
 npm run test:m2
 npm run test:m3
 npm run test:m4
+npm run test:m5
+npm run build:web
 ```
 
-### 3. API
+### 3. API 与工作台
 
 ```bash
 source .venv/bin/activate
 npm run dev:api
-# → http://127.0.0.1:8000/api/v1/health  (milestone=M4, bomCost=true)
-# → http://127.0.0.1:8000/docs
-```
-
-典型 M4 闭环：
-
-```bash
-# 1) prepare + simulation-jobs（历史 layoutRevision）
-# 2) POST /price-books + POST /cost-bases
-# 3) POST /cost-estimate-jobs
-#    → status=incomplete 时 totals.total=null；eligibleForLowestCostRanking=false
-# 4) POST /cost-ranking → 缺价候选排除，不宣称最低成本
-# 5) POST /score-profiles + POST /comparisons
-#    → mode=layout_only|whole_solution；雷达共同轴<3 仅表格
-# 6) POST /reports → HTML 绑定 layoutRevision / runId / costEstimateId
-```
-
-### 4. 前端
-
-```bash
+# 另一个终端
 npm run dev:web
-# → http://127.0.0.1:5173
-# 「M4：成本估算与多方案对比」
 ```
 
-### 5. Worker 探测
+- API：http://127.0.0.1:8000/api/v1/health （`milestone=M5`，识图/NSGA-II/长期成本为 false）
+- 工作台：http://127.0.0.1:5173
+
+主路径：
+
+1. 「使用矩形模板」或从左侧点选设备再点画布。
+2. 「校验并准备」。未通过时右栏给出原因，不会启动推演。
+3. 「开始推演」。结果页四卡来自 `/simulation-jobs`。
+4. 「帮我生成布局」可选；采用后是新方案分支。quick 指标不是运营效率。
+5. 右栏「尝试识别」与「方案对比 → 探测不支持项」展示 M5 失败路径。
+
+### 4. Worker
 
 ```bash
 npm run worker:ping
 ```
 
-## M4 完成判据对照
+## M5 范围（本切片）
 
-| 项 | 结果 |
+| 项 | 行为 |
 |---|---|
-| DEV-12 BOM/成本 | 数量与布局一致；缺价 → `missingItems` + `knownSubtotal`；不给完整 `total` |
-| 缺价不排最低成本 | `eligibleForLowestCostRanking=false`；`/cost-ranking` 排除 |
-| DEV-13 比较 | `layout_only` 资源不一致 → 不可比；`whole_solution` 披露人数/成本 |
-| 缺轴不补分 | 缺失 `score=null`；共同轴 &lt;3 → `radarEnabled=false` |
-| 加入方案不改旧分 | ScoreProfile 锚点锁定；绝对分不随候选集漂移 |
-| DEV-14 报告 | HTML 绑定历史 `layoutRevision` / `run`；不一致拒绝 |
-| README + test:m4 | 本文件与 `npm run test:m4` |
-
-## 夹具说明
-
-目录见 `fixtures/meta/catalog.json`。M4 语义由 `npm run test:m4` 断言（缺价排序、复用/搬移分列、雷达、layout_only/whole_solution、报告版本一致、API e2e）。
+| DXF/矢量提取 | `DXF_EXTRACT_UNSUPPORTED`，底图保留，不写场地 |
+| OCR | 高置信度仍是 `OCR_NOT_VERIFIED` / 待确认 |
+| 多边形/高度分区 | 缺比例 `SCALE_MISSING`；复杂场地与简单矩形都不产出几何 |
+| NSGA-II / 多目标 | 无候选，不宣称优于 `m2-plan-baseline-0.1` |
+| 长期成本 | 数据齐全也是 `LIFECYCLE_NOT_IMPLEMENTED`，`horizonCost=null` |
+| 扩容 / 运维轴 | `score=null`，不补 0 |
+| 未校准自动化 | 不进入吞吐结论 |
 
 ## 与方案文档对照
 
-- 权威：`04-总体与详细设计/`（流程、算法、契约 0.3、DEV/AC）
-- 指标/成本/对比：`04/05`；UI-08；DEC-02/08/09
-- 推演细则：`01/06`、`06b`、`07`、`12`
+- 权威：`04-总体与详细设计/`（UI-02 工作台，DEV-15/16，DEC-01 手动优先）
 - 非生产：`03-UI原型` 演示公式
