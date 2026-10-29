@@ -10,9 +10,11 @@ type Props = {
   stale: string | null;
   rejected: string | null;
   summary: string;
-  playhead: number;
+  simT: number;
+  t0: number;
+  t1: number;
   playing: boolean;
-  onPlayhead: (value: number) => void;
+  onSimT: (value: number) => void;
   onTogglePlay: () => void;
   onBack: () => void;
   children: ReactNode;
@@ -23,9 +25,11 @@ export function RunCards({
   stale,
   rejected,
   summary,
-  playhead,
+  simT,
+  t0,
+  t1,
   playing,
-  onPlayhead,
+  onSimT,
   onTogglePlay,
   onBack,
   children,
@@ -111,21 +115,21 @@ export function RunCards({
         <div className="replay">
           <div className="replay-head">
             <strong>动线回放</strong>
-            <span style={{ fontSize: 11, color: "#8aa09c" }}>轨迹来自本次运行</span>
+            <span style={{ fontSize: 11, color: "#8aa09c" }}>按本次 trajectory.segments 插值</span>
           </div>
           <div className="replay-board">{children}</div>
           <div className="replay-controls">
             <button type="button" onClick={onTogglePlay} aria-label="暂停或播放">
               {playing ? "暂停" : "播放"}
             </button>
-            <span>{clock(playhead, Number(run?.trajectory && (run.trajectory as { horizonSec?: number }).horizonSec) || 0)}</span>
+            <span>{clockSeconds(simT)}</span>
             <input
               type="range"
               min={0}
               max={1000}
-              value={Math.round(playhead * 1000)}
+              value={sliderValue(simT, t0, t1)}
               aria-label="回放进度"
-              onChange={(event) => onPlayhead(Number(event.target.value) / 1000)}
+              onChange={(event) => onSimT(t0 + (Number(event.target.value) / 1000) * Math.max(t1 - t0, 0))}
             />
             <span>完成率 {run && !rejected ? formatRate(secondary?.completionRate ?? null) : copy.rateNa}</span>
           </div>
@@ -180,10 +184,16 @@ export function RunCards({
   );
 }
 
-function clock(fraction: number, horizon: number) {
-  const sec = Math.max(0, Math.round(fraction * horizon));
+function clockSeconds(secIn: number) {
+  const sec = Math.max(0, Math.round(secIn));
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = sec % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function sliderValue(simT: number, t0: number, t1: number) {
+  const span = t1 - t0;
+  if (span <= 0) return 0;
+  return Math.round(Math.min(1, Math.max(0, (simT - t0) / span)) * 1000);
 }

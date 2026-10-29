@@ -1,6 +1,22 @@
-/** Shared document builders. Blank and rectangle starts both use these functions. */
+/** Shared document builders. Blank, rectangle, and mixed starts all use these functions. */
 
-export type PlaceableType = "ST-PAL-01" | "IN-DOCK-01" | "OUT-DOCK-01";
+import { assessPlacement, projectAccess, type AisleLine, type BoxEl } from "../canvas/geom";
+import { catalogItem, isPlaceable, type CatalogItem } from "../library/catalog";
+
+export const MIXED_TEMPLATE_ID = "template.mixed_wh_v0";
+
+export type PlaceableType =
+  | "ST-PAL-01"
+  | "ST-FLOOR-01"
+  | "IN-DOCK-01"
+  | "OUT-DOCK-01"
+  | "PK-DEPAL-01"
+  | "PK-PUT-EACH-01"
+  | "OUT-PACK-01"
+  | "MH-HAND-01"
+  | "MH-FORK-01"
+  | "AUX-FIRE-01"
+  | "AUX-WALL-01";
 
 export type PoseEl = {
   instanceId: string;
@@ -8,9 +24,20 @@ export type PoseEl = {
   x: number;
   y: number;
   yawDeg: number;
+  lengthM: number;
+  widthM: number;
+  heightM: number;
+  accessNodeId: string | null;
+  accessX: number | null;
+  accessY: number | null;
+  bays?: number;
+  levels?: number;
+  palletsPerBay?: number;
+  minClearWidthM?: number;
 };
 
 export type Draft = {
+  templateId: string | null;
   widthM: string;
   heightM: string;
   aisleWidthM: string;
@@ -43,9 +70,25 @@ const EVIDENCE = {
   updatedAt: "2026-10-29T00:00:00+00:00",
 };
 
-export function draftFor(mode: "blank" | "rectangle"): Draft {
+const PREFIX: Record<PlaceableType, string> = {
+  "ST-PAL-01": "rack",
+  "ST-FLOOR-01": "floor",
+  "IN-DOCK-01": "dock-in",
+  "OUT-DOCK-01": "dock-out",
+  "PK-DEPAL-01": "depal",
+  "PK-PUT-EACH-01": "put",
+  "OUT-PACK-01": "pack",
+  "MH-HAND-01": "hand",
+  "MH-FORK-01": "fork",
+  "AUX-FIRE-01": "fire",
+  "AUX-WALL-01": "wall",
+};
+
+export function draftFor(mode: "blank" | "rectangle" | "mixed"): Draft {
+  if (mode === "mixed") return mixedWarehouse();
   if (mode === "rectangle") {
     return {
+      templateId: null,
       widthM: "40",
       heightM: "24",
       aisleWidthM: "3.5",
@@ -56,6 +99,7 @@ export function draftFor(mode: "blank" | "rectangle"): Draft {
     };
   }
   return {
+    templateId: null,
     widthM: "",
     heightM: "",
     aisleWidthM: "",
@@ -64,6 +108,132 @@ export function draftFor(mode: "blank" | "rectangle"): Draft {
     aisleY: "",
     elements: [],
   };
+}
+
+function shell(partial: Omit<PoseEl, "accessNodeId" | "accessX" | "accessY">): PoseEl {
+  return { ...partial, accessNodeId: null, accessX: null, accessY: null };
+}
+
+function fromCatalog(
+  instanceId: string,
+  type: PlaceableType,
+  x: number,
+  y: number,
+  overrides: Partial<Pick<PoseEl, "yawDeg" | "lengthM" | "widthM" | "heightM" | "bays" | "levels">> = {},
+): PoseEl {
+  const spec = catalogItem(type);
+  if (!spec || !spec.placeable) throw new Error(`不可放置 ${type}`);
+  const bays = overrides.bays ?? spec.defaultBays;
+  const levels = overrides.levels ?? spec.defaultLevels;
+  const lengthM =
+    overrides.lengthM ??
+    (spec.bayLengthM && bays ? spec.bayLengthM * bays : spec.lengthM);
+  const heightM =
+    overrides.heightM ?? (spec.levelHeightM && levels ? spec.levelHeightM * levels : spec.heightM);
+  return shell({
+    instanceId,
+    typeElementId: type,
+    x,
+    y,
+    yawDeg: overrides.yawDeg ?? spec.orientationDeg,
+    lengthM,
+    widthM: overrides.widthM ?? spec.widthM,
+    heightM,
+    bays,
+    levels,
+    palletsPerBay: spec.palletsPerBay,
+    minClearWidthM: spec.minClearWidthM,
+  });
+}
+
+/** Comprehensive warehouse with the manual-path devices already seated. */
+function mixedWarehouse(): Draft {
+  const draft: Draft = {
+    templateId: MIXED_TEMPLATE_ID,
+    widthM: "40",
+    heightM: "24",
+    aisleWidthM: "3.5",
+    aisleFromX: "2",
+    aisleToX: "38",
+    aisleY: "12",
+    elements: [
+      fromCatalog("dock-in", "IN-DOCK-01", 4, 12),
+      fromCatalog("dock-out", "OUT-DOCK-01", 36, 12),
+      fromCatalog("rack-001", "ST-PAL-01", 10, 16),
+      fromCatalog("rack-002", "ST-PAL-01", 16, 16),
+      fromCatalog("floor-001", "ST-FLOOR-01", 26, 16.4),
+      fromCatalog("depal-001", "PK-DEPAL-01", 9, 7.6),
+      fromCatalog("put-001", "PK-PUT-EACH-01", 18, 7.8),
+      fromCatalog("pack-001", "OUT-PACK-01", 26, 7.6),
+      fromCatalog("hand-001", "MH-HAND-01", 14, 14.35),
+      fromCatalog("fork-001", "MH-FORK-01", 33.2, 7.4),
+      fromCatalog("fire-001", "AUX-FIRE-01", 33, 4.6, { lengthM: 8 }),
+      fromCatalog("wall-001", "AUX-WALL-01", 20, 19.5, { lengthM: 22 }),
+    ],
+  };
+  return rebindAccess(draft).draft;
+}
+
+export function aisleOf(draft: Draft): AisleLine | null {
+  const fromX = parseNum(draft.aisleFromX);
+  const toX = parseNum(draft.aisleToX);
+  const y = parseNum(draft.aisleY);
+  const widthM = parseNum(draft.aisleWidthM);
+  if (fromX === null || toX === null || y === null || widthM === null) return null;
+  return { fromX, toX, y, widthM };
+}
+
+export function asBox(el: PoseEl): BoxEl {
+  return {
+    instanceId: el.instanceId,
+    x: el.x,
+    y: el.y,
+    yawDeg: el.yawDeg,
+    lengthM: el.lengthM,
+    widthM: el.widthM,
+  };
+}
+
+export function rebindAccess(draft: Draft): { draft: Draft; lost: string[] } {
+  const aisle = aisleOf(draft);
+  const lost: string[] = [];
+  const elements = draft.elements.map((el) => {
+    const spec = catalogItem(el.typeElementId);
+    const access = projectAccess(el.x, el.y, aisle);
+    if (spec?.accessRequired && !access) lost.push(el.instanceId);
+    return {
+      ...el,
+      accessNodeId: access?.id ?? null,
+      accessX: access?.x ?? null,
+      accessY: access?.y ?? null,
+    };
+  });
+  return { draft: { ...draft, elements }, lost };
+}
+
+export function verdictFor(draft: Draft, el: PoseEl, ignoreId: string | null) {
+  const spec = catalogItem(el.typeElementId);
+  return assessPlacement({
+    x: el.x,
+    y: el.y,
+    lengthM: el.lengthM,
+    widthM: el.widthM,
+    yawDeg: el.yawDeg,
+    accessRequired: Boolean(spec?.accessRequired),
+    storageCopy: el.typeElementId === "ST-PAL-01" || el.typeElementId === "ST-FLOOR-01",
+    facilityW: parseNum(draft.widthM),
+    facilityH: parseNum(draft.heightM),
+    aisle: aisleOf(draft),
+    aisleWidthM: parseNum(draft.aisleWidthM),
+    minClearWidthM: el.minClearWidthM,
+    others: draft.elements.filter((item) => item.instanceId !== ignoreId && item.instanceId !== el.instanceId).map(asBox),
+  });
+}
+
+export function specOf(type: string): CatalogItem {
+  const spec = catalogItem(type);
+  if (!spec || !isPlaceable(type)) throw new Error(`不可放置 ${type}`);
+  return spec;
 }
 
 export function emptyScenario(): ScenarioFields {
@@ -188,6 +358,50 @@ export function buildFacility(draft: Draft, id: string, revision: string) {
   };
 }
 
+function elementParams(el: PoseEl): Record<string, unknown> {
+  const params: Record<string, unknown> = {
+    length_m: el.lengthM,
+    width_m: el.widthM,
+    height_m: el.heightM,
+    orientation_deg: el.yawDeg,
+    footprintW: el.lengthM,
+    footprintD: el.widthM,
+  };
+  if (el.accessNodeId && el.accessX !== null && el.accessY !== null) {
+    params.accessNodeId = el.accessNodeId;
+    params.accessPoint = { x: el.accessX, y: el.accessY };
+  }
+  if (el.typeElementId === "ST-PAL-01") {
+    const bays = el.bays ?? 1;
+    const levels = el.levels ?? 1;
+    params.bays = bays;
+    params.levels = levels;
+    params.palletsPerBay = el.palletsPerBay ?? 2;
+    params.minClearWidthM = el.minClearWidthM ?? 3;
+    params.geometry = {
+      bay_w_m: el.lengthM / bays,
+      bay_d_m: el.widthM,
+      levels,
+      level_height_m: el.heightM / levels,
+      bays,
+      aisle_w_m: el.minClearWidthM ?? 3,
+      orientation_deg: el.yawDeg,
+    };
+  }
+  if (el.typeElementId === "ST-FLOOR-01") {
+    params.levels = 1;
+    params.bays = 1;
+    params.palletsPerBay = el.palletsPerBay ?? 4;
+    params.geometry = {
+      length_m: el.lengthM,
+      width_m: el.widthM,
+      max_stack_h_m: el.heightM,
+      orientation_deg: el.yawDeg,
+    };
+  }
+  return params;
+}
+
 export function buildLayout(draft: Draft, id: string, revision: string, facilityRef: { id: string; revision: string }) {
   const fromX = parseNum(draft.aisleFromX);
   const toX = parseNum(draft.aisleToX);
@@ -216,10 +430,7 @@ export function buildLayout(draft: Draft, id: string, revision: string, facility
       instanceId: el.instanceId,
       typeElementId: el.typeElementId,
       pose: { x: el.x, y: el.y, yawDeg: el.yawDeg },
-      params:
-        el.typeElementId === "ST-PAL-01"
-          ? { levels: 4, bays: 1, palletsPerBay: 2, minClearWidthM: 3 }
-          : {},
+      params: elementParams(el),
       assetDisposition: "new",
     })),
     aisles,
@@ -333,7 +544,7 @@ export function horizonSec(fields: ScenarioFields): number {
 }
 
 export function nextInstance(elements: PoseEl[], type: PlaceableType): string {
-  const prefix = type === "ST-PAL-01" ? "rack" : type === "IN-DOCK-01" ? "dock-recv" : "dock-ship";
+  const prefix = PREFIX[type];
   const taken = new Set(elements.map((el) => el.instanceId));
   let i = 1;
   let id = `${prefix}-${i}`;
@@ -342,4 +553,35 @@ export function nextInstance(elements: PoseEl[], type: PlaceableType): string {
     id = `${prefix}-${i}`;
   }
   return id;
+}
+
+export function elementFromDrop(
+  elements: PoseEl[],
+  type: PlaceableType,
+  x: number,
+  y: number,
+  access: { id: string; x: number; y: number } | null,
+): PoseEl {
+  const spec = specOf(type);
+  const bays = spec.defaultBays;
+  const levels = spec.defaultLevels;
+  const lengthM = spec.bayLengthM && bays ? spec.bayLengthM * bays : spec.lengthM;
+  const heightM = spec.levelHeightM && levels ? spec.levelHeightM * levels : spec.heightM;
+  return {
+    instanceId: nextInstance(elements, type),
+    typeElementId: type,
+    x,
+    y,
+    yawDeg: spec.orientationDeg,
+    lengthM,
+    widthM: spec.widthM,
+    heightM,
+    accessNodeId: access?.id ?? null,
+    accessX: access?.x ?? null,
+    accessY: access?.y ?? null,
+    bays,
+    levels,
+    palletsPerBay: spec.palletsPerBay,
+    minClearWidthM: spec.minClearWidthM,
+  };
 }

@@ -1,5 +1,5 @@
 import { copy } from "../copy";
-import type { Draft, ScenarioFields } from "../workbench/draft";
+import type { Draft, PoseEl, ScenarioFields } from "../workbench/draft";
 import { parseNum } from "../workbench/draft";
 
 type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?: string };
@@ -7,12 +7,8 @@ type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?:
 type Props = {
   draft: Draft;
   onDraft: (patch: Partial<Draft>) => void;
-  selectedCaption: string;
-  selectedId: string | null;
-  selectedType: string | null;
-  x: string;
-  y: string;
-  onPose: (axis: "x" | "y", value: string) => void;
+  selected: PoseEl | null;
+  onElement: (patch: Partial<PoseEl>) => void;
   fields: ScenarioFields;
   onField: (patch: Partial<ScenarioFields>) => void;
   onTestValues: () => void;
@@ -25,12 +21,8 @@ type Props = {
 export function InspectorPanel({
   draft,
   onDraft,
-  selectedCaption,
-  selectedId,
-  selectedType,
-  x,
-  y,
-  onPose,
+  selected,
+  onElement,
   fields,
   onField,
   onTestValues,
@@ -44,7 +36,7 @@ export function InspectorPanel({
     <>
       <div className="inspector-head">
         <div className="section-title">参数与校核</div>
-        <div className="section-sub">{selectedCaption}</div>
+        <div className="section-sub">{selected ? `${selected.typeElementId} · ${selected.instanceId}` : "当前未选中设备"}</div>
       </div>
       <div className="inspector-scroll" id="inspectorScroll">
         <section className="panel-section">
@@ -68,29 +60,69 @@ export function InspectorPanel({
         <section className="panel-section">
           <div className="panel-row">
             <h3>实例参数</h3>
-            <span className="mini-tag">{selectedType ?? "未选择"}</span>
+            <span className="mini-tag">{selected?.typeElementId ?? "未选择"}</span>
           </div>
-          {selectedId ? (
+          {selected ? (
             <>
               <div className="field">
                 <label>实例 ID</label>
                 <div className="input-row">
-                  <input value={selectedId} readOnly />
+                  <input value={selected.instanceId} readOnly />
                 </div>
               </div>
               <div className="two-fields">
-                <NumberField label="东向 X" unit="m" value={x} onChange={(value) => onPose("x", value)} />
-                <NumberField label="北向 Y" unit="m" value={y} onChange={(value) => onPose("y", value)} />
+                <NumberField label="东向 X" unit="m" value={String(selected.x)} onChange={(value) => onElement({ x: parseNum(value) ?? selected.x })} />
+                <NumberField label="北向 Y" unit="m" value={String(selected.y)} onChange={(value) => onElement({ y: parseNum(value) ?? selected.y })} />
               </div>
+              <div className="two-fields">
+                <NumberField label="长度" unit="m" value={String(selected.lengthM)} onChange={(value) => onElement({ lengthM: parseNum(value) ?? selected.lengthM })} />
+                <NumberField label="宽度" unit="m" value={String(selected.widthM)} onChange={(value) => onElement({ widthM: parseNum(value) ?? selected.widthM })} />
+              </div>
+              <div className="two-fields">
+                <NumberField label="高度" unit="m" value={String(selected.heightM)} onChange={(value) => onElement({ heightM: parseNum(value) ?? selected.heightM })} />
+                <NumberField
+                  label="朝向"
+                  unit="°"
+                  value={String(selected.yawDeg)}
+                  onChange={(value) => onElement({ yawDeg: parseNum(value) ?? selected.yawDeg })}
+                />
+              </div>
+              {selected.typeElementId === "ST-PAL-01" ? (
+                <div className="two-fields">
+                  <NumberField
+                    label="列数"
+                    unit="列"
+                    value={String(selected.bays ?? 1)}
+                    onChange={(value) => {
+                      const bays = parseNum(value);
+                      if (bays === null || bays < 1) return;
+                      onElement({ bays, lengthM: 2.7 * bays });
+                    }}
+                  />
+                  <NumberField
+                    label="层数"
+                    unit="层"
+                    value={String(selected.levels ?? 1)}
+                    onChange={(value) => {
+                      const levels = parseNum(value);
+                      if (levels === null || levels < 1) return;
+                      onElement({ levels, heightM: 1.5 * levels });
+                    }}
+                  />
+                </div>
+              ) : null}
               <div className="field">
-                <label>类型</label>
+                <label>接入点</label>
                 <div className="input-row">
-                  <input value={selectedType ?? ""} readOnly />
+                  <input value={selected.accessNodeId ?? "未绑定"} readOnly />
                 </div>
               </div>
+              <button className="text-link" type="button" onClick={() => onElement({ yawDeg: (selected.yawDeg + 90) % 360 })}>
+                旋转 90°
+              </button>
             </>
           ) : (
-            <div className="inspector-empty">在画布中选择设备，用米制坐标修改位置。</div>
+            <div className="inspector-empty">拖入或点选设备。占地由长度、宽度和朝向决定，单位是米。</div>
           )}
         </section>
         <section className="panel-section">

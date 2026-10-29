@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createProject,
   getFacility,
@@ -11,36 +11,57 @@ import {
   startPrepare,
   startSimulation,
 } from "../api/client";
-import { LayoutCanvas } from "../canvas/LayoutCanvas";
+import { snapCenter, type Guide, type Tone } from "../canvas/geom";
+import { LayoutCanvas, type CanvasHandle } from "../canvas/LayoutCanvas";
 import { copy } from "../copy";
 import { InspectorPanel } from "../inspector/InspectorPanel";
 import { LibraryPanel } from "../library/LibraryPanel";
-import type { CatalogGroup } from "../library/catalog";
+import { catalogItem, isPlaceable, type CatalogGroup } from "../library/catalog";
 import { readAccepted, rememberAccepted } from "../persist/lastAccepted.js";
 import { PreparePanel } from "../prepare/PreparePanel";
 import { acceptRun, staleMessage } from "../run-cards/format.js";
-import { positionAt, routesFromSnapshot, type Segment } from "../run-cards/playback";
+import { actorsAt, segmentBounds, type Segment } from "../run-cards/playback";
 import { RunCards } from "../run-cards/RunCards";
 import {
+  MIXED_TEMPLATE_ID,
+  aisleOf,
+  asBox,
   buildDemand,
   buildFacility,
   buildLayout,
   buildOperating,
   draftFor,
+  elementFromDrop,
   emptyScenario,
   horizonSec,
   missingScenario,
-  nextInstance,
   parseNum,
+  rebindAccess,
   scenarioKey,
+  specOf,
   testScenario,
+  verdictFor,
   type Draft,
   type PlaceableType,
+  type PoseEl,
   type ScenarioFields,
 } from "./draft";
 
 type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?: string };
 type Bound = { layoutRevision: string; outbound: string; scenarioKey: string };
+type Ghost = {
+  typeId: string;
+  clientX: number;
+  clientY: number;
+  x: number;
+  y: number;
+  lengthM: number;
+  widthM: number;
+  heightM: number;
+  yawDeg: number;
+  tone: Tone;
+  label: string;
+};
 
 function textOf(data: Record<string, unknown> | undefined): string {
   if (!data) return "请求失败";
@@ -53,20 +74,39 @@ function draftFromSaved(facility: Record<string, unknown>, document: Record<stri
   const height = outer.reduce((max, point) => Math.max(max, point.y), 0);
   const aisle = ((document.aisles as Array<Record<string, unknown>>) ?? [])[0];
   const line = (aisle?.centerline as Array<{ x: number; y: number }>) ?? [];
-  const allowed = new Set(["ST-PAL-01", "IN-DOCK-01", "OUT-DOCK-01"]);
-  const elements = ((document.elements as Array<Record<string, unknown>>) ?? [])
-    .filter((el) => allowed.has(String(el.typeElementId)))
-    .map((el) => {
-      const pose = el.pose as { x: number; y: number; yawDeg?: number };
-      return {
+  const elements = ((document.elements as Array<Record<string, unknown>>) ?? []).flatMap((el) => {
+    const type = String(el.typeElementId);
+    if (!isPlaceable(type)) return [];
+    const spec = catalogItem(type);
+    if (!spec) return [];
+    const pose = (el.pose as { x: number; y: number; yawDeg?: number }) ?? { x: 0, y: 0 };
+    const params = (el.params as Record<string, unknown>) ?? {};
+    const access = params.accessPoint as { x?: number; y?: number } | undefined;
+    const lengthM = numberOr(params.length_m, spec.lengthM);
+    const widthM = numberOr(params.width_m, spec.widthM);
+    const heightM = numberOr(params.height_m, spec.heightM);
+    return [
+      {
         instanceId: String(el.instanceId),
-        typeElementId: el.typeElementId as PlaceableType,
+        typeElementId: type as PlaceableType,
         x: pose.x,
         y: pose.y,
-        yawDeg: pose.yawDeg ?? 0,
-      };
-    });
+        yawDeg: pose.yawDeg ?? numberOr(params.orientation_deg, spec.orientationDeg),
+        lengthM,
+        widthM,
+        heightM,
+        accessNodeId: typeof params.accessNodeId === "string" ? params.accessNodeId : null,
+        accessX: typeof access?.x === "number" ? access.x : null,
+        accessY: typeof access?.y === "number" ? access.y : null,
+        bays: typeof params.bays === "number" ? params.bays : spec.defaultBays,
+        levels: typeof params.levels === "number" ? params.levels : spec.defaultLevels,
+        palletsPerBay: typeof params.palletsPerBay === "number" ? params.palletsPerBay : spec.palletsPerBay,
+        minClearWidthM: typeof params.minClearWidthM === "number" ? params.minClearWidthM : spec.minClearWidthM,
+      },
+    ];
+  });
   return {
+    templateId: null,
     widthM: String(width),
     heightM: String(height),
     aisleWidthM: aisle?.widthM === undefined ? "" : String(aisle.widthM),
@@ -77,10 +117,14 @@ function draftFromSaved(facility: Record<string, unknown>, document: Record<stri
   };
 }
 
+function numberOr(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export function Workbench() {
   const [mode, setMode] = useState<"edit" | "decision">("edit");
-  const [started, setStarted] = useState(false);
-  const [draft, setDraft] = useState<Draft>(draftFor("blank"));
+  const [draft, setDraft] = useState<Draft>(() => draftFor("mixed"));
   const [past, setPast] = useState<Draft[]>([]);
   const [future, setFuture] = useState<Draft[]>([]);
   const [scenario, setScenario] = useState<ScenarioFields>(emptyScenario());
@@ -92,7 +136,6 @@ export function Workbench() {
   const [layoutRev, setLayoutRev] = useState<string | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [pending, setPending] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | CatalogGroup>("all");
   const [prepare, setPrepare] = useState<{ ready: boolean; checks: Check[]; snapshot: Record<string, unknown> | null } | null>(null);
@@ -102,18 +145,32 @@ export function Workbench() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [showGrid, setShowGrid] = useState(true);
-  const [showRoute, setShowRoute] = useState(true);
+  const [showLinks, setShowLinks] = useState(true);
+  const [relief, setRelief] = useState(true);
   const [testValues, setTestValues] = useState(false);
-  const [playhead, setPlayhead] = useState(0);
+  const [simT, setSimT] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [ghost, setGhost] = useState<Ghost | null>(null);
+  const [guides, setGuides] = useState<Guide[]>([]);
+  const [liveTone, setLiveTone] = useState<{ id: string; tone: Tone } | null>(null);
   const dragOrigin = useRef<Draft | null>(null);
+  const dragRef = useRef<{ id: PlaceableType; x: number; y: number; moved: boolean } | null>(null);
+  const canvasRef = useRef<CanvasHandle>(null);
 
   const dirty = JSON.stringify(draft) !== savedKey;
   const selectedEl = draft.elements.find((el) => el.instanceId === selected) ?? null;
+  const segments = useMemo(
+    () => ((run?.trajectory as { segments?: Segment[] } | undefined)?.segments) ?? [],
+    [run],
+  );
+  const horizon = Number((run?.trajectory as { horizonSec?: number } | undefined)?.horizonSec ?? 0);
+  const bounds = useMemo(() => segmentBounds(segments, horizon), [segments, horizon]);
+  const actors = useMemo(() => (mode === "decision" ? actorsAt(segments, simT) : []), [mode, segments, simT]);
 
   function note(message: string) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 2600);
+    window.setTimeout(() => setToast(""), 3200);
   }
 
   function replaceDraft(next: Draft, recordHistory: boolean) {
@@ -123,6 +180,30 @@ export function Workbench() {
     }
     setDraft(next);
     setPrepare(null);
+  }
+
+  function previewDrop(type: PlaceableType, clientX: number, clientY: number) {
+    const meters = canvasRef.current?.metersFromClient(clientX, clientY);
+    if (!meters) return null;
+    const spec = specOf(type);
+    const lengthM = spec.bayLengthM && spec.defaultBays ? spec.bayLengthM * spec.defaultBays : spec.lengthM;
+    const heightM = spec.levelHeightM && spec.defaultLevels ? spec.levelHeightM * spec.defaultLevels : spec.heightM;
+    const facilityW = parseNum(draft.widthM) ?? 0;
+    const facilityH = parseNum(draft.heightM) ?? 0;
+    const snapped = snapCenter(
+      meters.x,
+      meters.y,
+      aisleOf(draft),
+      draft.elements.map(asBox),
+      lengthM,
+      spec.widthM,
+      spec.orientationDeg,
+      facilityW,
+      facilityH,
+    );
+    const probe = elementFromDrop(draft.elements, type, snapped.x, snapped.y, null);
+    const verdict = verdictFor(draft, probe, probe.instanceId);
+    return { spec, snapped, verdict, lengthM, heightM, probe };
   }
 
   useEffect(() => {
@@ -148,7 +229,7 @@ export function Workbench() {
       setLayoutRev(layoutRef.revision);
       setDraft(next);
       setSavedKey(JSON.stringify(next));
-      setStarted(true);
+      setPrepare(null);
     })();
     return () => {
       cancel = true;
@@ -156,26 +237,40 @@ export function Workbench() {
   }, []);
 
   useEffect(() => {
+    if (!run) return;
+    setSimT(bounds.t0);
+    setPlaying(true);
+  }, [run, bounds.t0]);
+
+  useEffect(() => {
     if (!playing || mode !== "decision") return;
     let handle = 0;
     let last = performance.now();
+    const span = Math.max(1, bounds.t1 - bounds.t0);
+    const rate = Math.min(40, Math.max(8, span / 18));
     const tick = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
-      setPlayhead((value) => (value + dt / 20) % 1);
+      setSimT((value) => {
+        const start = value < bounds.t0 || value > bounds.t1 ? bounds.t0 : value;
+        const next = start + dt * rate;
+        return next > bounds.t1 ? bounds.t0 : next;
+      });
       handle = requestAnimationFrame(tick);
     };
     handle = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(handle);
-  }, [playing, mode]);
+  }, [playing, mode, bounds.t0, bounds.t1]);
 
-  function choose(kind: "blank" | "rectangle") {
+  function choose(kind: "blank" | "rectangle" | "mixed") {
     setDraft(draftFor(kind));
     setPast([]);
     setFuture([]);
     setSavedKey(null);
-    setStarted(true);
     setPrepare(null);
+    setSelected(null);
+    setGhost(null);
+    setGuides([]);
   }
 
   function undo() {
@@ -198,6 +293,46 @@ export function Workbench() {
       setPrepare(null);
       return items.slice(1);
     });
+  }
+
+  function applyDraft(patch: Partial<Draft>) {
+    const rebound = rebindAccess({ ...draft, ...patch });
+    if (rebound.lost.length) {
+      note(`${copy.noAccess} ${rebound.lost.join("、")}`);
+      return;
+    }
+    for (const el of rebound.draft.elements) {
+      const verdict = verdictFor(rebound.draft, el, el.instanceId);
+      if (verdict.tone === "red") {
+        note(verdict.reason);
+        return;
+      }
+    }
+    replaceDraft(rebound.draft, true);
+  }
+
+  function applyElement(patch: Partial<PoseEl>) {
+    if (!selectedEl) return;
+    const next = { ...selectedEl, ...patch };
+    if (!(next.lengthM > 0) || !(next.widthM > 0) || !(next.heightM > 0)) {
+      note("长度、宽度和高度必须大于 0。");
+      return;
+    }
+    const verdict = verdictFor(draft, next, next.instanceId);
+    if (verdict.tone === "red") {
+      note(verdict.reason);
+      return;
+    }
+    const stored: PoseEl = {
+      ...next,
+      accessNodeId: verdict.access?.id ?? null,
+      accessX: verdict.access?.x ?? null,
+      accessY: verdict.access?.y ?? null,
+    };
+    replaceDraft(
+      { ...draft, elements: draft.elements.map((el) => (el.instanceId === stored.instanceId ? stored : el)) },
+      true,
+    );
   }
 
   async function onSave() {
@@ -307,7 +442,6 @@ export function Workbench() {
       }
       setRun(accepted.run as Record<string, unknown>);
       setBound({ layoutRevision: layoutRev, outbound: scenario.outbound, scenarioKey: scenarioKey(scenario) });
-      setPlayhead(0);
       setMode("decision");
       note("推演完成");
     } catch (error) {
@@ -327,74 +461,95 @@ export function Workbench() {
     .filter((check) => check.status === "fail")
     .flatMap((check) => check.objectIds ?? [])
     .filter((id) => draft.elements.some((el) => el.instanceId === id));
-  const routes = routesFromSnapshot(prepare?.snapshot ?? null);
-  const segments = ((run?.trajectory as { segments?: Segment[] } | undefined)?.segments) ?? [];
-  const horizon = Number((run?.trajectory as { horizonSec?: number } | undefined)?.horizonSec ?? 0);
-  const marker = run ? positionAt(segments, playhead * horizon) : null;
   const statusText = conflictIds.length ? "硬冲突" : dirty || !layoutRev ? "未保存" : prepare?.ready ? "可推演" : prepare ? "准备未通过" : "未准备";
   const statusClass = conflictIds.length || (prepare && !prepare.ready) ? "status-pill error" : statusText === "可推演" ? "status-pill" : "status-pill warn";
   const widthLabel = draft.widthM && draft.heightM ? `${draft.widthM} × ${draft.heightM} m` : copy.missing;
+  const badge = stale
+    ? stale
+    : draft.templateId && !layoutRev
+      ? draft.templateId
+      : layoutRev
+        ? `修订 ${layoutRev}`
+        : "尚未保存";
 
   const canvas = (
     <LayoutCanvas
+      ref={canvasRef}
       draft={draft}
       selected={selected}
-      pending={pending}
       conflictIds={conflictIds}
+      liveTone={liveTone}
+      guides={guides}
       showGrid={showGrid}
-      showRoute={showRoute}
-      routes={routes}
-      marker={mode === "decision" ? marker : null}
-      badge={stale ? stale : layoutRev ? `修订 ${layoutRev}` : "尚未保存"}
+      showLinks={showLinks}
+      actors={actors}
+      segments={segments}
+      simT={simT}
+      relief={relief}
+      badge={badge}
       interactive={mode === "edit"}
-      onPlace={(x, y) => {
-        if (!pending) return;
-        const type = pending as PlaceableType;
-        const width = parseNum(draft.widthM);
-        const height = parseNum(draft.heightM);
-        if (width === null || height === null || x < 0 || y < 0 || x > width || y > height) {
-          note("放置无效：请先填写场地，并放在场地内");
-          return;
-        }
-        const element = {
-          instanceId: nextInstance(draft.elements, type),
-          typeElementId: type,
-          x: Math.round(x * 10) / 10,
-          y: Math.round(y * 10) / 10,
-          yawDeg: type === "OUT-DOCK-01" ? 180 : 0,
-        };
-        replaceDraft({ ...draft, elements: [...draft.elements, element] }, true);
-        setSelected(element.instanceId);
-        setPending(null);
-      }}
+      ghost={ghost}
       onSelect={setSelected}
       onMove={(id, x, y, phase) => {
+        const current = (dragOrigin.current ?? draft).elements.find((el) => el.instanceId === id) ?? draft.elements.find((el) => el.instanceId === id);
+        if (!current) return;
         if (phase === "start") {
           dragOrigin.current = structuredClone(draft);
           return;
         }
-        const width = parseNum(draft.widthM);
-        const height = parseNum(draft.heightM);
-        if (phase === "end" && width !== null && height !== null && (x < 0 || y < 0 || x > width || y > height)) {
-          if (dragOrigin.current) setDraft(dragOrigin.current);
-          note("位置无效：已恢复到场地内");
+        const base = dragOrigin.current ?? draft;
+        const facilityW = parseNum(base.widthM) ?? 0;
+        const facilityH = parseNum(base.heightM) ?? 0;
+        const snapped = snapCenter(
+          x,
+          y,
+          aisleOf(base),
+          base.elements.filter((el) => el.instanceId !== id).map(asBox),
+          current.lengthM,
+          current.widthM,
+          current.yawDeg,
+          facilityW,
+          facilityH,
+        );
+        const probe = { ...current, x: snapped.x, y: snapped.y };
+        const verdict = verdictFor(base, probe, id);
+        const stored: PoseEl = {
+          ...probe,
+          accessNodeId: verdict.access?.id ?? null,
+          accessX: verdict.access?.x ?? null,
+          accessY: verdict.access?.y ?? null,
+        };
+        if (phase === "move") {
+          setGuides(snapped.guides);
+          setLiveTone({ id, tone: verdict.tone });
+          setDraft((now) => ({ ...now, elements: now.elements.map((el) => (el.instanceId === id ? stored : el)) }));
           return;
         }
-        setDraft((current) => ({
-          ...current,
-          elements: current.elements.map((el) => (el.instanceId === id ? { ...el, x, y } : el)),
-        }));
-        if (phase === "end" && dragOrigin.current) {
-          setPast((items) => [...items, dragOrigin.current as Draft].slice(-30));
-          setFuture([]);
-          setPrepare(null);
+        setGuides([]);
+        setLiveTone(null);
+        if (verdict.tone === "red") {
+          if (dragOrigin.current) setDraft(dragOrigin.current);
+          note(verdict.reason);
+          dragOrigin.current = null;
+          return;
         }
+        setDraft((now) => ({ ...now, elements: now.elements.map((el) => (el.instanceId === id ? stored : el)) }));
+        if (dragOrigin.current) {
+          const origin = dragOrigin.current;
+          const moved = origin.elements.some((el) => el.instanceId === id && (el.x !== stored.x || el.y !== stored.y));
+          if (moved) {
+            setPast((items) => [...items, origin].slice(-30));
+            setFuture([]);
+            setPrepare(null);
+          }
+        }
+        dragOrigin.current = null;
       }}
     />
   );
 
   return (
-    <div className="app">
+    <div className={`app${dragging ? " dragging" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <span className="brandmark">
@@ -404,7 +559,7 @@ export function Workbench() {
             <b />
           </span>
           <span className="brandname">
-            仓序<span style={{ color: "#9baaaa", fontWeight: 400 }}> / </span>规划
+            仓序<span style={{ color: "#7f9ea6", fontWeight: 400 }}> / </span>规划
           </span>
         </div>
         <div className="project">
@@ -416,7 +571,7 @@ export function Workbench() {
             value={projectName}
             onChange={(event) => setProjectName(event.target.value)}
           />
-          <span className="topmeta">{started ? "人工摆放" : "选择起步"}</span>
+          <span className="topmeta">{draft.templateId ?? "人工摆放"}</span>
         </div>
         <div className="mode-switch">
           <button type="button" className={mode === "edit" ? "active" : ""} onClick={() => setMode("edit")}>
@@ -445,39 +600,92 @@ export function Workbench() {
       {mode === "edit" ? (
         <div className="workspace" id="workspace">
           <LibraryPanel
-            pending={pending}
+            dragging={dragging}
             query={query}
             filter={filter}
             onQuery={setQuery}
             onFilter={setFilter}
-            onPick={(id, placeable) => {
-              if (!placeable) {
-                note(copy.unsupportedType);
+            onLocked={() => note(copy.unsupportedType)}
+            onDragStart={(id, clientX, clientY) => {
+              dragRef.current = { id: id as PlaceableType, x: clientX, y: clientY, moved: false };
+              setDragging(id);
+            }}
+            onDragMove={(id, clientX, clientY) => {
+              const drag = dragRef.current;
+              if (!drag || drag.id !== id) return;
+              if (Math.hypot(clientX - drag.x, clientY - drag.y) > 6) drag.moved = true;
+              if (!drag.moved) return;
+              const preview = previewDrop(drag.id, clientX, clientY);
+              if (!preview) {
+                setGhost(null);
+                setGuides([]);
                 return;
               }
-              setPending((current) => (current === id ? null : id));
+              setGuides(preview.snapped.guides);
+              setGhost({
+                typeId: drag.id,
+                clientX,
+                clientY,
+                x: preview.snapped.x,
+                y: preview.snapped.y,
+                lengthM: preview.lengthM,
+                widthM: preview.spec.widthM,
+                heightM: preview.heightM,
+                yawDeg: preview.spec.orientationDeg,
+                tone: preview.verdict.tone,
+                label: preview.spec.name,
+              });
+            }}
+            onDragEnd={(id, clientX, clientY) => {
+              const drag = dragRef.current;
+              dragRef.current = null;
+              setDragging(null);
+              setGhost(null);
+              setGuides([]);
+              if (!drag || drag.id !== id || !drag.moved) return;
+              if (mode !== "edit") {
+                note("请先回到布局编辑再摆放。");
+                return;
+              }
+              const preview = previewDrop(drag.id, clientX, clientY);
+              if (!preview) {
+                note("请把设备拖到场地画布上。");
+                return;
+              }
+              if (preview.verdict.tone === "red") {
+                note(preview.verdict.reason);
+                return;
+              }
+              const element = elementFromDrop(draft.elements, drag.id, preview.snapped.x, preview.snapped.y, preview.verdict.access);
+              replaceDraft({ ...draft, elements: [...draft.elements, element] }, true);
+              setSelected(element.instanceId);
             }}
           />
           <main className="main" id="editorMain">
             <div className="canvas-head">
               <div>
                 <div className="canvas-title">综合仓布局</div>
-                <div className="canvas-caption">设备与通道 / {widthLabel}</div>
+                <div className="canvas-caption">
+                  {draft.templateId ?? "人工摆放"} / {widthLabel} / {copy.view25}
+                </div>
               </div>
               <div className="canvas-tools">
                 <div className="view-switch">
-                  <button type="button" className="active">
-                    2D 顶视
+                  <button type="button" className={relief ? "" : "active"} onClick={() => setRelief(false)}>
+                    顶视
                   </button>
-                  <button type="button" onClick={() => note(copy.view3d)}>
-                    3D 巡视
+                  <button type="button" className={relief ? "active" : ""} onClick={() => setRelief(true)}>
+                    2.5D
                   </button>
                 </div>
                 <button className="icon-btn" type="button" onClick={() => setShowGrid((value) => !value)} aria-label="切换网格">
                   格
                 </button>
-                <button className="icon-btn" type="button" onClick={() => setShowRoute((value) => !value)} aria-label="切换动线">
+                <button className="icon-btn" type="button" onClick={() => setShowLinks((value) => !value)} aria-label="切换接入线">
                   线
+                </button>
+                <button className="ghost-btn" type="button" onClick={() => choose("mixed")}>
+                  {MIXED_TEMPLATE_ID}
                 </button>
                 <button className="ghost-btn" type="button" onClick={() => choose("blank")}>
                   空白场地
@@ -487,23 +695,7 @@ export function Workbench() {
                 </button>
               </div>
             </div>
-            {started ? (
-              canvas
-            ) : (
-              <div className="board-wrap">
-                <div className="board-frame">
-                  <div className="start-choices">
-                    <p>{copy.emptyLayout}</p>
-                    <button className="ghost-btn" type="button" onClick={() => choose("blank")}>
-                      空白场地
-                    </button>
-                    <button className="run-btn" type="button" style={{ width: 180 }} onClick={() => choose("rectangle")}>
-                      矩形模板
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            {canvas}
             <div className="bottom-strip">
               <span className={statusClass}>{statusText}</span>
               <span className="stat">
@@ -523,23 +715,9 @@ export function Workbench() {
           <aside className="inspector" id="inspectorPanel">
             <InspectorPanel
               draft={draft}
-              onDraft={(patch) => replaceDraft({ ...draft, ...patch }, true)}
-              selectedCaption={selectedEl ? `${selectedEl.typeElementId} · ${selectedEl.instanceId}` : "当前未选中设备"}
-              selectedId={selectedEl?.instanceId ?? null}
-              selectedType={selectedEl?.typeElementId ?? null}
-              x={selectedEl ? String(selectedEl.x) : ""}
-              y={selectedEl ? String(selectedEl.y) : ""}
-              onPose={(axis, value) => {
-                const number = parseNum(value);
-                if (!selectedEl || number === null) return;
-                replaceDraft(
-                  {
-                    ...draft,
-                    elements: draft.elements.map((el) => (el.instanceId === selectedEl.instanceId ? { ...el, [axis]: number } : el)),
-                  },
-                  true,
-                );
-              }}
+              onDraft={applyDraft}
+              selected={selectedEl}
+              onElement={applyElement}
               fields={scenario}
               onField={(patch) => setScenario((current) => ({ ...current, ...patch }))}
               onTestValues={() => {
@@ -571,9 +749,14 @@ export function Workbench() {
           stale={stale}
           rejected={rejected}
           summary={`${projectName || "未命名综合仓"} · 修订 ${run?.layoutRevision ?? copy.notIssued}`}
-          playhead={playhead}
+          simT={simT}
+          t0={bounds.t0}
+          t1={bounds.t1}
           playing={playing}
-          onPlayhead={setPlayhead}
+          onSimT={(value) => {
+            setPlaying(false);
+            setSimT(value);
+          }}
           onTogglePlay={() => setPlaying((value) => !value)}
           onBack={() => setMode("edit")}
         >

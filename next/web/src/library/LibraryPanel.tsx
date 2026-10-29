@@ -2,21 +2,24 @@ import { copy } from "../copy";
 import { catalog, groupLabels, type CatalogGroup } from "./catalog";
 
 type Props = {
-  pending: string | null;
+  dragging: string | null;
   query: string;
   filter: "all" | CatalogGroup;
   onQuery: (value: string) => void;
   onFilter: (value: "all" | CatalogGroup) => void;
-  onPick: (id: string, placeable: boolean) => void;
+  onLocked: (id: string) => void;
+  onDragStart: (id: string, clientX: number, clientY: number) => void;
+  onDragMove: (id: string, clientX: number, clientY: number) => void;
+  onDragEnd: (id: string, clientX: number, clientY: number) => void;
 };
 
-export function LibraryPanel({ pending, query, filter, onQuery, onFilter, onPick }: Props) {
+export function LibraryPanel({ dragging, query, filter, onQuery, onFilter, onLocked, onDragStart, onDragMove, onDragEnd }: Props) {
   const q = query.trim().toLowerCase();
   return (
     <aside className="sidebar" id="libraryPanel">
       <div className="sidebar-head">
         <div className="section-title">元素库</div>
-        <div className="section-sub">综合仓 · 常用设施</div>
+        <div className="section-sub">综合仓 · 米制占地</div>
       </div>
       <div className="search-wrap">
         <input
@@ -45,32 +48,53 @@ export function LibraryPanel({ pending, query, filter, onQuery, onFilter, onPick
           return (
             <div className="catalog-group" key={group}>
               <div className="catalog-label">{label}</div>
-              {items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`catalog-item${pending === item.id ? " active" : ""}`}
-                  onClick={() => onPick(item.id, item.placeable)}
-                  title={item.placeable ? item.id : copy.unsupportedType}
-                >
-                  <span className={`catalog-icon${group === "station" ? " orange" : group === "dock" ? " blue" : ""}`}>
-                    {item.placeable ? "▣" : "·"}
-                  </span>
-                  <span className="catalog-copy">
-                    <span className="catalog-name">{item.name}</span>
-                    <span className="catalog-id">
-                      {item.id}
-                      {item.placeable ? "" : " · 未启用"}
+              {items.map((item) => {
+                const preview = 26 / Math.max(item.lengthM, item.widthM);
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`catalog-item${dragging === item.id ? " active" : ""}${item.placeable ? "" : " locked"}`}
+                    title={item.placeable ? `${item.lengthM} × ${item.widthM} m` : copy.unsupportedType}
+                    onPointerDown={(event) => {
+                      if (!item.placeable) {
+                        onLocked(item.id);
+                        return;
+                      }
+                      event.currentTarget.setPointerCapture(event.pointerId);
+                      onDragStart(item.id, event.clientX, event.clientY);
+                    }}
+                    onPointerMove={(event) => {
+                      if (!item.placeable) return;
+                      onDragMove(item.id, event.clientX, event.clientY);
+                    }}
+                    onPointerUp={(event) => {
+                      if (!item.placeable) return;
+                      onDragEnd(item.id, event.clientX, event.clientY);
+                    }}
+                  >
+                    <span className={`catalog-icon${group === "station" ? " orange" : group === "dock" ? " blue" : ""}`}>
+                      <i
+                        className="foot-preview"
+                        style={{ width: Math.max(6, item.lengthM * preview), height: Math.max(4, item.widthM * preview) }}
+                      />
                     </span>
-                  </span>
-                  <span className="catalog-add">{item.placeable ? "+" : ""}</span>
-                </button>
-              ))}
+                    <span className="catalog-copy">
+                      <span className="catalog-name">{item.name}</span>
+                      <span className="catalog-id">
+                        {item.id}
+                        {item.placeable ? ` · ${item.lengthM}×${item.widthM} m` : " · 未启用"}
+                      </span>
+                    </span>
+                    <span className="catalog-add">{item.placeable ? "拖" : ""}</span>
+                  </button>
+                );
+              })}
             </div>
           );
         })}
       </div>
-      <div className="library-foot">点击元素，再点击画布放置</div>
+      <div className="library-foot">{copy.libraryHint}</div>
     </aside>
   );
 }
