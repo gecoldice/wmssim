@@ -1,0 +1,280 @@
+[
+  {
+    "t": 0.0,
+    "kind": "arrival",
+    "taskId": "T-out-0001"
+  },
+  {
+    "t": 0.0,
+    "kind": "dispatch",
+    "taskId": "T-out-0001",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 0.0,
+    "kind": "travel_start",
+    "taskId": "T-out-0001",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 5.0,
+    "kind": "arrival",
+    "taskId": "T-out-0002"
+  },
+  {
+    "t": 5.0,
+    "kind": "resource_wait",
+    "taskId": "T-out-0002",
+    "entityId": "pool-forklift"
+  },
+  {
+    "t": 6.666666666666667,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0001",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 6.666666666666667,
+    "kind": "pick",
+    "taskId": "T-out-0001",
+    "locationId": "rack-001"
+  },
+  {
+    "t": 10.0,
+    "kind": "arrival",
+    "taskId": "T-out-0003"
+  },
+  {
+    "t": 15.0,
+    "kind": "arrival",
+    "taskId": "T-out-0004"
+  },
+  {
+    "t": 16.666666666666668,
+    "kind": "pick_done",
+    "taskId": "T-out-0001",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 16.666666666666668,
+    "kind": "travel_start",
+    "taskId": "T-out-0001",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 38.333333333333336,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0001",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 38.333333333333336,
+    "kind": "ship_start",
+    "taskId": "T-out-0001"
+  },
+  {
+    "t": 43.333333333333336,
+    "kind": "ship",
+    "taskId": "T-out-0001",
+    "palletEq": 1.0
+  },
+  {
+    "t": 43.333333333333336,
+    "kind": "task_complete",
+    "taskId": "T-out-0001",
+    "waitSec": 0.0,
+    "status": "done"
+  },
+  {
+    "t": 43.333333333333336,
+    "kind": "dispatch",
+    "taskId": "T-out-0002",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 43.333333333333336,
+    "kind": "travel_start",
+    "taskId": "T-out-0002",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 43.333333333333336,
+    "kind": "resource_wait",
+    "taskId": "T-out-0003",
+    "entityId": "pool-forklift"
+  },
+  {
+    "t": 60.66666666666667,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0002",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 60.66666666666667,
+    "kind": "pick",
+    "taskId": "T-out-0002",
+    "locationId": "rack-001"
+  },
+  {
+    "t": 70.66666666666667,
+    "kind": "pick_done",
+    "taskId": "T-out-0002",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 70.66666666666667,
+    "kind": "travel_start",
+    "taskId": "T-out-0002",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 92.33333333333334,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0002",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 92.33333333333334,
+    "kind": "ship_start",
+    "taskId": "T-out-0002"
+  },
+  {
+    "t": 97.33333333333334,
+    "kind": "ship",
+    "taskId": "T-out-0002",
+    "palletEq": 1.0
+  },
+  {
+    "t": 97.33333333333334,
+    "kind": "task_complete",
+    "taskId": "T-out-0002",
+    "waitSec": 38.333333333333336,
+    "status": "done"
+  },
+  {
+    "t": 97.33333333333334,
+    "kind": "dispatch",
+    "taskId": "T-out-0003",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 97.33333333333334,
+    "kind": "travel_start",
+    "taskId": "T-out-0003",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 97.33333333333334,
+    "kind": "resource_wait",
+    "taskId": "T-out-0004",
+    "entityId": "pool-forklift"
+  },
+  {
+    "t": 114.66666666666667,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0003",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 114.66666666666667,
+    "kind": "pick",
+    "taskId": "T-out-0003",
+    "locationId": "rack-001"
+  },
+  {
+    "t": 124.66666666666667,
+    "kind": "pick_done",
+    "taskId": "T-out-0003",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 124.66666666666667,
+    "kind": "travel_start",
+    "taskId": "T-out-0003",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 146.33333333333334,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0003",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 146.33333333333334,
+    "kind": "ship_start",
+    "taskId": "T-out-0003"
+  },
+  {
+    "t": 151.33333333333334,
+    "kind": "ship",
+    "taskId": "T-out-0003",
+    "palletEq": 1.0
+  },
+  {
+    "t": 151.33333333333334,
+    "kind": "task_complete",
+    "taskId": "T-out-0003",
+    "waitSec": 87.33333333333334,
+    "status": "done"
+  },
+  {
+    "t": 151.33333333333334,
+    "kind": "dispatch",
+    "taskId": "T-out-0004",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 151.33333333333334,
+    "kind": "travel_start",
+    "taskId": "T-out-0004",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 168.66666666666669,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0004",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 168.66666666666669,
+    "kind": "pick",
+    "taskId": "T-out-0004",
+    "locationId": "rack-001"
+  },
+  {
+    "t": 178.66666666666669,
+    "kind": "pick_done",
+    "taskId": "T-out-0004",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 178.66666666666669,
+    "kind": "travel_start",
+    "taskId": "T-out-0004",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 200.33333333333334,
+    "kind": "travel_arrive",
+    "taskId": "T-out-0004",
+    "resourceId": "forklift-1"
+  },
+  {
+    "t": 200.33333333333334,
+    "kind": "ship_start",
+    "taskId": "T-out-0004"
+  },
+  {
+    "t": 205.33333333333334,
+    "kind": "ship",
+    "taskId": "T-out-0004",
+    "palletEq": 1.0
+  },
+  {
+    "t": 205.33333333333334,
+    "kind": "task_complete",
+    "taskId": "T-out-0004",
+    "waitSec": 136.33333333333334,
+    "status": "done"
+  }
+]

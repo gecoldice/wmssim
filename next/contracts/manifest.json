@@ -1,0 +1,26 @@
+{
+  "contractVersionOuter": "0.3",
+  "snapshotSchemaVersion": "0.2",
+  "equipSchemaVersion": "0.2",
+  "source": "Copied from contracts/schemas for the manual slice, then owned here.",
+  "schemas": {
+    "equip": "schemas/v0.2/equip.schema.json",
+    "layoutSnapshot": "schemas/v0.2/layout-snapshot.schema.json",
+    "common": "schemas/v0.3/common.schema.json",
+    "project": "schemas/v0.3/project.schema.json",
+    "facilityRevision": "schemas/v0.3/facility-revision.schema.json",
+    "layoutDocumentRevision": "schemas/v0.3/layout-document-revision.schema.json",
+    "demandRevision": "schemas/v0.3/demand-revision.schema.json",
+    "operatingProfileRevision": "schemas/v0.3/operating-profile-revision.schema.json",
+    "scenarioPackage": "schemas/v0.3/scenario-package.schema.json",
+    "validationReport": "schemas/v0.3/validation-report.schema.json",
+    "runResult": "schemas/slice/run-result.schema.json"
+  },
+  "errorCodesAddedInSlice": [
+    "NOT_SIMULATION_READY",
+    "LAYOUT_REVISION_MISMATCH",
+    "ELEMENT_ID",
+    "NO_RESOURCES",
+    "NARROW_AISLE"
+  ]
+}

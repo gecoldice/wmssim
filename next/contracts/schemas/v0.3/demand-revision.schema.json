@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/demand-revision.json",
+  "title": "DemandRevision v0.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "id",
+    "revision",
+    "goodsGroups",
+    "inventoryTargets",
+    "initialInventory",
+    "flows",
+    "arrivalProfile",
+    "serviceTargets",
+    "assumptions"
+  ],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "minLength": 1 },
+    "parentRef": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "goodsGroups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "loadUnit",
+          "dimensionsM",
+          "grossWeightKg",
+          "stackability",
+          "allowedStorageTypes",
+          "quantityUnit",
+          "evidence"
+        ],
+        "properties": {
+          "id": { "type": "string" },
+          "loadUnit": {
+            "type": "string",
+            "enum": ["pallet", "case", "each"]
+          },
+          "dimensionsM": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["length", "width", "height"],
+            "properties": {
+              "length": { "type": "number", "exclusiveMinimum": 0 },
+              "width": { "type": "number", "exclusiveMinimum": 0 },
+              "height": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          },
+          "grossWeightKg": { "type": "number", "exclusiveMinimum": 0 },
+          "stackability": { "type": "string", "minLength": 1 },
+          "allowedStorageTypes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "quantityUnit": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "inventoryTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["goodsGroupId", "quantity", "unit"],
+        "properties": {
+          "goodsGroupId": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unit": { "type": "string" }
+        }
+      }
+    },
+    "initialInventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["goodsGroupId", "quantity", "unit"],
+        "properties": {
+          "goodsGroupId": { "type": "string" },
+          "quantity": { "type": "number", "minimum": 0 },
+          "unit": { "type": "string" },
+          "locationInstanceId": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["flowKind", "inputBasis", "quantity", "unit", "source"],
+        "properties": {
+          "flowKind": {
+            "type": "string",
+            "enum": ["full_pallet", "break_bulk", "piece_pick"]
+          },
+          "inputBasis": {
+            "type": "string",
+            "enum": ["explicit_quantity", "share_of_total"]
+          },
+          "quantity": { "type": "number", "minimum": 0 },
+          "unit": { "type": "string" },
+          "source": {
+            "type": "string",
+            "enum": ["external", "derived", "storage", "inventory"]
+          },
+          "intent": {
+            "type": "string",
+            "enum": ["inbound", "outbound", "inbound_putaway", "outbound_ship"],
+            "description": "M3：显式入/出库意图；缺省时由 source 推断"
+          },
+          "downstream": { "type": ["object", "null"], "additionalProperties": true },
+          "conversionRef": { "type": ["string", "null"] },
+          "parentFlowId": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "arrivalProfile": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind", "windowSec", "unit"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["uniform", "explicit_series", "stochastic"]
+        },
+        "windowSec": { "type": "number", "exclusiveMinimum": 0 },
+        "unit": { "type": "string" },
+        "paramsSource": { "type": "string" },
+        "distribution": { "type": ["string", "null"] },
+        "namedStream": { "type": ["string", "null"] }
+      }
+    },
+    "serviceTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["metricId", "operator", "givenValue", "unit", "scope"],
+        "properties": {
+          "metricId": { "type": "string" },
+          "operator": {
+            "type": "string",
+            "enum": [">=", "<=", "==", ">", "<"]
+          },
+          "givenValue": { "type": "number" },
+          "unit": { "type": "string" },
+          "scope": { "type": "string" }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "totalDemand": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "fixtureCatalogVersion": "slice-manual-1",
+  "notes": [
+    "测试夹具数值不是客户项目默认值。",
+    "expected-cards.json 只在 events-small.json 与 hand-check.md 核对之后写入。"
+  ],
+  "entries": [
+    {"path": "facility-rect.json", "schema": "v0.3/facility-revision.schema.json", "expect": "pass"},
+    {"path": "facility-wall.json", "schema": "v0.3/facility-revision.schema.json", "expect": "pass"},
+    {"path": "layout-ok.json", "schema": "v0.3/layout-document-revision.schema.json", "expect": "pass"},
+    {"path": "layout-narrow.json", "schema": "v0.3/layout-document-revision.schema.json", "expect": "pass"},
+    {"path": "layout-cross-wall.json", "schema": "v0.3/layout-document-revision.schema.json", "expect": "pass"},
+    {"path": "layout-short-alias.json", "schema": "v0.3/layout-document-revision.schema.json", "expect": "fail"},
+    {"path": "demand-small.json", "schema": "v0.3/demand-revision.schema.json", "expect": "pass"},
+    {"path": "demand-zero.json", "schema": "v0.3/demand-revision.schema.json", "expect": "pass"},
+    {"path": "demand-break-bulk.json", "schema": "v0.3/demand-revision.schema.json", "expect": "pass"},
+    {"path": "operating-one-forklift.json", "schema": "v0.3/operating-profile-revision.schema.json", "expect": "pass"},
+    {"path": "operating-two-types.json", "schema": "v0.3/operating-profile-revision.schema.json", "expect": "pass"},
+    {"path": "scenario-small.json", "schema": "v0.3/scenario-package.schema.json", "expect": "pass"},
+    {"path": "snapshot-ok.json", "schema": "v0.2/layout-snapshot.schema.json", "expect": "pass"},
+    {"path": "snapshot-bad-version.json", "schema": "v0.2/layout-snapshot.schema.json", "expect": "fail"},
+    {"path": "equip-st-pal-01.json", "schema": "v0.2/equip.schema.json", "expect": "pass"}
+  ]
+}

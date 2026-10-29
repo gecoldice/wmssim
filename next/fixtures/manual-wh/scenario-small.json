@@ -1,0 +1,20 @@
+{
+  "contractVersion": "0.3",
+  "scenarioId": "scenario-small",
+  "demandRef": {
+    "id": "demand-small",
+    "revision": "fixture"
+  },
+  "operatingRef": {
+    "id": "op-one",
+    "revision": "fixture"
+  },
+  "runControl": {
+    "horizonSec": 3600,
+    "seedStreams": {
+      "demand": 7
+    },
+    "metricDefinitionVersion": "metrics-slice-manual-v1"
+  },
+  "expectedLayoutRevision": null
+}
