@@ -17,6 +17,7 @@
     "test:m4": "PYTHONPATH=shared/python:services/api python3 scripts/run_m4_checks.py",
     "test:m5": "PYTHONPATH=shared/python:services/api python3 scripts/run_m5_checks.py",
     "test:persist": "PYTHONPATH=shared/python:services/api python3 scripts/run_persist_checks.py",
+    "test:pg": "PYTHONPATH=shared/python:services/api python3 scripts/run_pg_checks.py",
     "dev:api": "PYTHONPATH=shared/python uvicorn app.main:app --app-dir services/api --reload --host 127.0.0.1 --port 8000",
     "worker:ping": "PYTHONPATH=shared/python python3 services/worker/main.py --ping"
   }

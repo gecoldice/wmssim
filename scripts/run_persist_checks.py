@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "services" / "api"))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
-from app.store import MemoryStore, STORE  # noqa: E402
+from app.store import MemoryStore, STORE, resolve_store_target  # noqa: E402
 
 FIXTURES = ROOT / "fixtures"
 
@@ -141,6 +141,28 @@ def main() -> None:
     assert kept is not None
     assert kept["layout"]["id"] == layout_ref["id"]
     assert kept["run"]["runId"] == body["runId"]
+
+    saved_url = os.environ.get("DATABASE_URL")
+    saved_db = os.environ.get("SIMAPP_DB")
+    try:
+        os.environ["DATABASE_URL"] = "postgresql://simapp@127.0.0.1:9/simapp"
+        os.environ["SIMAPP_DB"] = "off"
+        assert resolve_store_target() == ("memory", None)
+        os.environ["SIMAPP_DB"] = str(DB_PATH)
+        engine, locator = resolve_store_target()
+        assert engine == "sqlite" and locator == str(DB_PATH)
+        os.environ.pop("SIMAPP_DB", None)
+        engine, _locator = resolve_store_target()
+        assert engine == "postgresql"
+    finally:
+        if saved_db is None:
+            os.environ.pop("SIMAPP_DB", None)
+        else:
+            os.environ["SIMAPP_DB"] = saved_db
+        if saved_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = saved_url
 
     print(f"PASS persist sqlite reload runId={body['runId']} db={DB_PATH}")
 

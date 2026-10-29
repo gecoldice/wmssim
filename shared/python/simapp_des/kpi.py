@@ -85,7 +85,7 @@ def compute_kpi(
         "throughput": {
             "value": throughput,
             "unit": "palletEq/h",
-            "definition": "外部发运完成托盘当量 / (horizonSec/3600)；拆托中间产出不计",
+            "definition": "外部发运完成托盘当量 / (horizonSec/3600)；拆托中间产出不计，只在下游发运计一次",
             "outboundPalletEq": outbound_pallet_eq,
             "horizonSec": horizon_sec,
             "evidenceEventKinds": ["outbound", "task_complete"],

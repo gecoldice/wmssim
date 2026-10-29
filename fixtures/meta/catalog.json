@@ -8,7 +8,8 @@
     "M2 规划/锁定/采用语义见 scripts/run_m2_checks.py。",
     "M3 DES/四卡/回放见 scripts/run_m3_checks.py；KPI 由事件核对，非 UI 演示公式。",
     "M4 BOM/成本/比较见 scripts/run_m4_checks.py；缺价不排最低成本；缺轴不补零。",
-    "M5 识图/NSGA-II/长期成本见 scripts/run_m5_checks.py；每项为失败或不支持，不宣称未实现能力。"
+    "M5 识图/NSGA-II/长期成本见 scripts/run_m5_checks.py；每项为失败或不支持，不宣称未实现能力。",
+    "break_bulk / piece_pick 见 scripts/run_m3_checks.py。拆托中间产出不计外部吞吐。"
   ],
   "entries": [
     {
@@ -271,6 +272,22 @@
       "schema": "v0.3/operating-profile-revision.schema.json",
       "expect": "pass",
       "purpose": "whole_solution：加人；layout_only 应判不可比"
+    },
+    {
+      "id": "FX-OPS-BREAK",
+      "path": "valid/fx-ops-demand-break-bulk.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "拆托 2 托，casesPerPallet=4，下游发运由引擎生成"
+    },
+    {
+      "id": "FX-OPS-PIECE",
+      "path": "valid/fx-ops-demand-piece-pick.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "独立件拣 4 箱，外部发运托盘当量为 1"
     }
   ]
 }

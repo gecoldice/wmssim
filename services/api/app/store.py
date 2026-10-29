@@ -1,7 +1,8 @@
 """项目/布局/跑次/成本/比较存储。
 
-默认落到 simapp/data/simapp.sqlite（重启不丢）。
-SIMAPP_DB=off|memory|:memory: 时只留在进程内，供回归测试使用。
+有 DATABASE_URL（postgres:// 或 postgresql://）且未指定 SIMAPP_DB 时用 PostgreSQL。
+否则落到 simapp/data/simapp.sqlite。SIMAPP_DB=off|memory|:memory: 只留在进程内。
+显式 SIMAPP_DB 路径或 MemoryStore(db_path=...) 始终用 SQLite，不因 DATABASE_URL 改道。
 """
 
 from __future__ import annotations
@@ -14,7 +15,8 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 from uuid import uuid4
 
 _AUTO = object()
@@ -25,20 +27,47 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def resolve_db_path(explicit: Any = _AUTO) -> Optional[Path]:
-    """None 表示不落盘。显式路径优先；未指定时读 SIMAPP_DB，再默认到 data/simapp.sqlite。"""
-    if explicit is _AUTO:
-        raw = os.environ.get("SIMAPP_DB")
-        if raw is None:
-            return Path(__file__).resolve().parents[3] / "data" / "simapp.sqlite"
-        text = raw.strip()
-    elif explicit is None:
-        return None
-    else:
+def resolve_store_target(explicit: Any = _AUTO) -> Tuple[str, Optional[str]]:
+    """返回 (engine, locator)。engine 为 memory、sqlite 或 postgresql。
+
+    locator 是 sqlite 路径或 DATABASE_URL。调用方不得把带口令的 URL 写进日志。
+    """
+    if explicit is None:
+        return ("memory", None)
+    if explicit is not _AUTO:
         text = str(explicit).strip()
-    if text.lower() in _MEMORY_TOKENS:
+        if text.lower() in _MEMORY_TOKENS:
+            return ("memory", None)
+        return ("sqlite", text)
+
+    raw = os.environ.get("SIMAPP_DB")
+    if raw is not None:
+        text = raw.strip()
+        if text.lower() in _MEMORY_TOKENS:
+            return ("memory", None)
+        return ("sqlite", text)
+
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if url:
+        if not url.startswith(("postgres://", "postgresql://")):
+            raise RuntimeError("DATABASE_URL 须为 postgres:// 或 postgresql://")
+        return ("postgresql", url)
+
+    default = Path(__file__).resolve().parents[3] / "data" / "simapp.sqlite"
+    return ("sqlite", str(default))
+
+
+def resolve_db_path(explicit: Any = _AUTO) -> Optional[Path]:
+    """SQLite 路径。PostgreSQL / 内存模式返回 None。"""
+    engine, locator = resolve_store_target(explicit)
+    if engine != "sqlite" or not locator:
         return None
-    return Path(text)
+    return Path(locator)
+
+
+def _database_name(url: str) -> Optional[str]:
+    path = urlparse(url).path.lstrip("/")
+    return path or None
 
 
 @dataclass
@@ -86,29 +115,48 @@ class MemoryStore:
         self._global_comparisons: Dict[str, str] = {}
         self._global_reports: Dict[str, str] = {}
         self._lock = threading.Lock()
-        self._db_path = resolve_db_path(db_path)
-        self._conn: Optional[sqlite3.Connection] = None
-        if self._db_path is not None:
+        self._engine, locator = resolve_store_target(db_path)
+        self._db_path: Optional[Path] = Path(locator) if self._engine == "sqlite" and locator else None
+        self._database_url = locator if self._engine == "postgresql" else None
+        self._conn: Any = None
+        self._placeholder = "?"
+        if self._engine == "sqlite" and self._db_path is not None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
             self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS snapshot (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    payload TEXT NOT NULL
-                )
-                """
-            )
-            self._conn.commit()
+            self._ensure_snapshot_table()
+            self._load()
+        elif self._engine == "postgresql" and self._database_url:
+            try:
+                import psycopg
+            except ImportError as exc:
+                raise RuntimeError(
+                    "DATABASE_URL 已设置，但未安装 psycopg。请 pip install -r services/api/requirements.txt"
+                ) from exc
+            self._conn = psycopg.connect(self._database_url)
+            self._placeholder = "%s"
+            self._ensure_snapshot_table()
             self._load()
 
     def persistence_info(self) -> Dict[str, Any]:
         return {
-            "engine": "sqlite" if self._db_path else "memory",
-            "durable": self._db_path is not None,
+            "engine": self._engine,
+            "durable": self._engine != "memory",
             "path": str(self._db_path) if self._db_path else None,
+            "database": _database_name(self._database_url) if self._database_url else None,
         }
+
+    def _ensure_snapshot_table(self) -> None:
+        assert self._conn is not None
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snapshot (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        self._conn.commit()
 
     def _dump_state(self) -> Dict[str, Any]:
         return {
@@ -150,8 +198,8 @@ class MemoryStore:
             return
         payload = json.dumps(self._dump_state(), ensure_ascii=False)
         self._conn.execute(
-            """
-            INSERT INTO snapshot (id, payload) VALUES (1, ?)
+            f"""
+            INSERT INTO snapshot (id, payload) VALUES (1, {self._placeholder})
             ON CONFLICT(id) DO UPDATE SET payload = excluded.payload
             """,
             (payload,),

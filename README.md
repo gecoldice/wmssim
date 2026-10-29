@@ -6,7 +6,7 @@
 
 **当前阶段：本地持久化 + 工作台成本对比** — 在 M1–M5 之上。
 
-- 项目、布局、准备结果、跑次、成本和比较写入 `data/simapp.sqlite`（SQLite）。重启 API 不丢。`SIMAPP_DB=off` 时测试仍用内存。
+- 项目、布局、准备结果、跑次、成本和比较：设置 `DATABASE_URL=postgresql://...` 且不设 `SIMAPP_DB` 时写入 PostgreSQL；否则写入 `data/simapp.sqlite`。`SIMAPP_DB=off` 时测试仍用内存。显式 `SIMAPP_DB` 路径始终是 SQLite。
 - 工作台：左元素库 / 中画布 / 右参数。摆放或采用候选 → 保存 → 校验并准备 → DES 四卡 → 成本/对比（当前方案 vs 叉车加一，`whole_solution`）。
 - 四卡、库容、初投和对比表只显示接口结果。不使用 `03-UI原型` 的演示公式。价目是 `demoOnly` 输入。
 - DEV-15 识图（DXF / OCR / 多边形分区）与 DEV-16（NSGA-II、多目标、长期成本、扩容/运维量表、未校准自动化）仍只返回失败或不支持，本切片不再追加这类桩。
@@ -22,7 +22,7 @@
 | equip.json | `schema_version = "0.2"` |
 | 派生器 | `derivationVersion = m1-derive-0.1` |
 | 规划器 | `plannerVersion = m2-plan-baseline-0.1` |
-| DES 引擎 | `engineVersion = m3-des-0.1` |
+| DES 引擎 | `engineVersion = m3-des-0.1`（含 `full_pallet` / `break_bulk` / `piece_pick`；拆托中间产出不计外部吞吐） |
 | 成本引擎 | `costEngineVersion = m4-cost-0.1` |
 | 比较引擎 | `compareEngineVersion = m4-compare-0.1` |
 | 扩展切片 | `extendVersion = m5-extend-0.1`（能力未实现） |
@@ -71,6 +71,7 @@ npm run test:m3
 npm run test:m4
 npm run test:m5
 npm run test:persist
+npm run test:pg
 npm run build:web
 ```
 
@@ -85,7 +86,7 @@ npm run dev:web
 
 - API：http://127.0.0.1:8000/api/v1/health （`milestone=M5`，`persistence.engine=sqlite`）
 - 工作台：http://127.0.0.1:5173
-- 数据库文件：`data/simapp.sqlite`（已 gitignore）。换路径：`SIMAPP_DB=/path/to/file.sqlite npm run dev:api`
+- 数据库：默认 `data/simapp.sqlite`（已 gitignore）。PostgreSQL：`DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5432/simapp npm run dev:api`（不要把口令写进仓库）。只切 SQLite 文件：`SIMAPP_DB=/path/to/file.sqlite npm run dev:api`。`npm run test:pg` 会拉起一次性 Docker Postgres 做切换验证。
 
 主路径：
 

@@ -126,7 +126,9 @@
           },
           "downstream": { "type": ["object", "null"], "additionalProperties": true },
           "conversionRef": { "type": ["string", "null"] },
-          "parentFlowId": { "type": ["string", "null"] }
+          "parentFlowId": { "type": ["string", "null"] },
+          "flowId": { "type": ["string", "null"] },
+          "casesPerPallet": { "type": ["integer", "null"], "exclusiveMinimum": 0 }
         }
       }
     },

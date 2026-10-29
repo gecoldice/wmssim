@@ -314,11 +314,109 @@ def test_not_ready_blocks_des() -> None:
     print("PASS FX-M3-GATE prepare required before DES")
 
 
+def _ops_common(demand: dict, snap: dict, operating: dict) -> dict:
+    return dict(
+        snapshot=snap,
+        demand=demand,
+        operating=operating,
+        run_control={
+            "horizonSec": 3600,
+            "seedStreams": {"demand": 42, "dispatch": 42},
+            "metricDefinitionVersion": "metrics-m3-v1",
+        },
+        expected_layout_revision=snap["layoutRevision"],
+        faults=operating.get("faults"),
+        skill_tags_present=True,
+    )
+
+
+def test_break_bulk_and_piece_pick() -> None:
+    layout = load("valid/fx-m1-ok-layout.json")
+    facility = load("valid/fx01-small-rect-facility.json")
+    operating = load("valid/fx-m3-operating.json")
+    snap = derive_layout_snapshot(layout, facility)
+    before_ids = sorted(el["elementId"] for el in snap["elements"])
+    break_demand = load("valid/fx-ops-demand-break-bulk.json")
+    piece_demand = load("valid/fx-ops-demand-piece-pick.json")
+
+    common_break = _ops_common(break_demand, snap, operating)
+    b1 = run_des(**common_break, run_id="run-break-a")
+    b2 = run_des(**common_break, run_id="run-break-b")
+    assert _strip_run(b1) == _strip_run(b2)
+    assert sorted(el["elementId"] for el in snap["elements"]) == before_ids
+    assert b1["inventoryConservation"]["ok"] is True
+    assert b1["inventoryConservation"]["initial"] == 2.0
+    assert b1["inventoryConservation"]["outbound"] == 2.0
+    assert b1["inventoryConservation"]["ending"] == 0.0
+    assert min(b1["inventoryConservation"]["stockByLocation"].values()) >= 0
+    assert b1["kpi"]["cards"]["throughput"]["outboundPalletEq"] == 2.0
+    assert b1["kpiFromUiDemo"] is False
+    breaks = [e for e in b1["events"] if e["kind"] == "break_bulk"]
+    ships = [e for e in b1["events"] if e["kind"] == "outbound_complete"]
+    assert len(breaks) == 2
+    assert all(e["countsAsExternalThroughput"] is False for e in breaks)
+    assert all(e["cases"] == 4 for e in breaks)
+    assert len(ships) == 2
+    assert all(e["countsAsExternalThroughput"] is True for e in ships)
+    assert all(e["source"] == "derived" and e["parentTaskId"] for e in ships)
+    assert abs(sum(e["palletEq"] for e in ships) - 2.0) < 1e-9
+    assert "FLOW_KIND_STUB" not in {w["code"] for w in b1["runManifest"]["warnings"]}
+    derived = [e for e in b1["events"] if e["kind"] == "derived_ship"]
+    assert len(derived) == 2
+    assert {e["flowChainId"] for e in derived} == {"flow-break-1"}
+
+    common_piece = _ops_common(piece_demand, snap, operating)
+    p1 = run_des(**common_piece, run_id="run-piece-a")
+    p2 = run_des(**common_piece, run_id="run-piece-b")
+    assert _strip_run(p1) == _strip_run(p2)
+    assert p1["inventoryConservation"]["ok"] is True
+    assert p1["inventoryConservation"]["ending"] == 1.0
+    assert p1["kpi"]["cards"]["throughput"]["outboundPalletEq"] == 1.0
+    piece_ships = [e for e in p1["events"] if e["kind"] == "outbound_complete"]
+    assert len(piece_ships) == 4
+    assert all(e["source"] == "external" and e["parentTaskId"] is None for e in piece_ships)
+    assert abs(sum(e["palletEq"] for e in piece_ships) - 1.0) < 1e-9
+    assert not any(e["kind"] == "break_bulk" for e in p1["events"])
+
+    mixed = deepcopy(break_demand)
+    mixed["initialInventory"][0]["quantity"] = 3
+    mixed["flows"] = [
+        break_demand["flows"][0],
+        piece_demand["flows"][0],
+    ]
+    mixed["flows"][0] = deepcopy(mixed["flows"][0])
+    mixed["flows"][0]["quantity"] = 1
+    m1 = run_des(**_ops_common(mixed, snap, operating), run_id="run-mix-a")
+    m2 = run_des(**_ops_common(mixed, snap, operating), run_id="run-mix-b")
+    assert _strip_run(m1) == _strip_run(m2)
+    assert m1["kpi"]["cards"]["throughput"]["outboundPalletEq"] == 2.0
+    assert m1["inventoryConservation"]["ok"] is True
+    assert m1["inventoryConservation"]["ending"] == 1.0
+    mix_ships = [e for e in m1["events"] if e["kind"] == "outbound_complete"]
+    assert abs(sum(e["palletEq"] for e in mix_ships) - 2.0) < 1e-9
+    assert len([e for e in m1["events"] if e["kind"] == "break_bulk"]) == 1
+
+    missing = deepcopy(piece_demand)
+    missing["flows"][0]["casesPerPallet"] = None
+    try:
+        run_des(**_ops_common(missing, snap, operating), run_id="run-missing-cpp")
+        raise AssertionError("expected missing casesPerPallet")
+    except DesError as exc:
+        assert exc.code == "INPUT_UNCONFIRMED"
+        assert "casesPerPallet" in exc.message
+
+    print(
+        "PASS FX-OPS break outboundEq=2 piece outboundEq=1 mixed=2 "
+        "no extra zone, reproducible"
+    )
+
+
 def main() -> int:
     failures = 0
     for name, fn in [
         ("ENGINE", test_engine_core),
         ("ZERO", test_zero_demand_no_divzero),
+        ("OPS", test_break_bulk_and_piece_pick),
         ("API", test_api_simulation_job),
         ("GATE", test_not_ready_blocks_des),
     ]:

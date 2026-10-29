@@ -34,6 +34,35 @@ class DesError(Exception):
         self.details = details
 
 
+def _require_int(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise DesError("INPUT_UNCONFIRMED", f"{label} 必须是已确认的整数", {"value": value})
+    number = float(value)
+    if abs(number - round(number)) > 1e-6:
+        raise DesError(
+            "INPUT_UNCONFIRMED",
+            f"{label} 必须是整数，不能产生不可分的小数箱",
+            {"value": value},
+        )
+    return int(round(number))
+
+
+def _cases_per_pallet(flow: Dict[str, Any]) -> int:
+    raw = flow.get("casesPerPallet")
+    downstream = flow.get("downstream")
+    if raw is None and isinstance(downstream, dict):
+        raw = downstream.get("casesPerPallet")
+    if raw is None:
+        raise DesError(
+            "INPUT_UNCONFIRMED",
+            "break_bulk/piece_pick 需要场景确认的 casesPerPallet，不使用统一默认值",
+        )
+    count = _require_int(raw, "casesPerPallet")
+    if count < 1:
+        raise DesError("INPUT_UNCONFIRMED", "casesPerPallet 必须 ≥ 1", {"casesPerPallet": count})
+    return count
+
+
 @dataclass(order=True)
 class Event:
     t: float
@@ -68,7 +97,7 @@ class Task:
     dest_node: str
     location_id: Optional[str]
     dock_id: Optional[str]
-    direction: str  # inbound_putaway | outbound_ship
+    direction: str  # inbound_putaway | outbound_ship | break_bulk
     status: str = "queued"
     wait_sec: float = 0.0
     busy_sec: float = 0.0
@@ -82,6 +111,12 @@ class Task:
     wait_start: Optional[float] = None
     flow_chain_id: Optional[str] = None
     phase: str = "to_pickup"  # to_pickup | to_dest
+    source: str = "external"  # external | storage | derived
+    parent_task_id: Optional[str] = None
+    case_qty: Optional[int] = None
+    cases_per_pallet: Optional[int] = None
+    skip_inventory_pick: bool = False
+    counts_external: bool = True
 
 
 class DesEngine:
@@ -141,6 +176,8 @@ class DesEngine:
         self.process_putaway = float(proc.get("full_pallet") or proc.get("putaway") or 90)
         self.process_pick = float(proc.get("pick") or 60)
         self.process_ship = float(proc.get("ship") or 30)
+        self.process_break = float(proc.get("break_bulk") or proc.get("pick") or 60)
+        self.process_piece = float(proc.get("piece_pick") or proc.get("pick") or 60)
 
         self.adj = build_adjacency(self.snapshot)
         self.edges = edge_lookup(self.snapshot)
@@ -271,100 +308,199 @@ class DesEngine:
         self.tasks[task.task_id] = task
         self._schedule(t_arr, PHASE_ARRIVE, spawn_kind, {"taskId": task.task_id})
 
+    def _arrival_times(self, n: int) -> List[float]:
+        window = float((self.demand.get("arrivalProfile") or {}).get("windowSec") or self.horizon)
+        window = min(window, self.horizon)
+        if n <= 0:
+            return []
+        if n == 1:
+            return [0.0]
+        return [window * i / n for i in range(n)]
+
+    def _next_task_id(self, prefix: str) -> str:
+        self._task_seq += 1
+        return f"{prefix}-{self._task_seq:04d}"
+
+    def _spawn_full_pallet(self, flow: Dict[str, Any]) -> None:
+        qty_total = float(flow.get("quantity") or 0)
+        if qty_total <= 0:
+            return
+        n = _require_int(qty_total, "full_pallet quantity")
+        intent = flow.get("intent") or flow.get("direction")
+        source = flow.get("source") or "external"
+        if intent in {"outbound", "outbound_ship"} or source in {"storage", "inventory"}:
+            direction = "outbound_ship"
+        elif intent in {"inbound", "inbound_putaway"} or source == "external":
+            direction = "inbound_putaway"
+        else:
+            direction = "outbound_ship"
+        chain = flow.get("flowId") or f"flow-pallet-{self._task_seq + 1}"
+        for t_arr in self._arrival_times(n):
+            if direction == "inbound_putaway":
+                if not self.recv_dock:
+                    raise DesError("INPUT_UNCONFIRMED", "入库流需要收货月台")
+                slot = self.inventory.pick_slot_with_capacity(1.0)
+                if not slot:
+                    self._warn("NO_SLOT_CAPACITY", "无库位容量承接入库任务")
+                    continue
+                tid = self._next_task_id("T-in")
+                self._add_task(
+                    Task(
+                        task_id=tid,
+                        flow_kind="full_pallet",
+                        qty=1.0,
+                        origin_node=self.recv_dock["accessNodeId"],
+                        dest_node=self.slots[slot]["accessNodeId"],
+                        location_id=slot,
+                        dock_id=self.recv_dock["elementId"],
+                        direction="inbound_putaway",
+                        enqueue_t=t_arr,
+                        flow_chain_id=chain,
+                        source=source,
+                    ),
+                    t_arr,
+                    "arrival",
+                )
+            else:
+                if not self.ship_dock:
+                    raise DesError("INPUT_UNCONFIRMED", "出库流需要发运月台")
+                preferred = next(iter(sorted(self.slots.keys())), None)
+                if preferred is None:
+                    self._warn("NO_SLOT", "无货位可服务出库")
+                    continue
+                tid = self._next_task_id("T-out")
+                self._add_task(
+                    Task(
+                        task_id=tid,
+                        flow_kind="full_pallet",
+                        qty=1.0,
+                        origin_node=self.slots[preferred]["accessNodeId"],
+                        dest_node=self.ship_dock["accessNodeId"],
+                        location_id=preferred,
+                        dock_id=self.ship_dock["elementId"],
+                        direction="outbound_ship",
+                        enqueue_t=t_arr,
+                        flow_chain_id=chain,
+                        source=source,
+                    ),
+                    t_arr,
+                    "task_spawn",
+                )
+
+    def _spawn_break_bulk(self, flow: Dict[str, Any], flow_index: int) -> None:
+        """拆托不新建分区。取走整托，拆成整数箱，再生成下游发运。"""
+        if not self.ship_dock:
+            raise DesError("INPUT_UNCONFIRMED", "拆托下游发运需要发运月台")
+        cpp = _cases_per_pallet(flow)
+        n = _require_int(flow.get("quantity") or 0, "break_bulk quantity")
+        unit = flow.get("unit") or "pallet"
+        if unit != "pallet":
+            raise DesError("INPUT_UNCONFIRMED", "拆托 quantity 的单位应为 pallet", {"unit": unit})
+        if n <= 0:
+            return
+        chain = flow.get("flowId") or f"flow-break-{flow_index + 1}"
+        preferred = next(iter(sorted(self.slots.keys())), None)
+        if preferred is None:
+            raise DesError("INPUT_UNCONFIRMED", "拆托需要货位，但不要求单独的拆托区")
+        for t_arr in self._arrival_times(n):
+            tid = self._next_task_id("T-brk")
+            self._add_task(
+                Task(
+                    task_id=tid,
+                    flow_kind="break_bulk",
+                    qty=1.0,
+                    origin_node=self.slots[preferred]["accessNodeId"],
+                    dest_node=self.slots[preferred]["accessNodeId"],
+                    location_id=preferred,
+                    dock_id=self.ship_dock["elementId"],
+                    direction="break_bulk",
+                    enqueue_t=t_arr,
+                    flow_chain_id=chain,
+                    source=flow.get("source") or "storage",
+                    case_qty=cpp,
+                    cases_per_pallet=cpp,
+                    counts_external=False,
+                ),
+                t_arr,
+                "task_spawn",
+            )
+
+    def _spawn_piece_pick(self, flow: Dict[str, Any], flow_index: int) -> None:
+        """独立小件是外部需求。与整托共用货位和月台，不强制小件区。"""
+        if not self.ship_dock:
+            raise DesError("INPUT_UNCONFIRMED", "件拣出库需要发运月台")
+        cpp = _cases_per_pallet(flow)
+        unit = flow.get("unit") or "case"
+        raw_qty = flow.get("quantity") or 0
+        if unit in {"case", "each", "piece"}:
+            n_cases = _require_int(raw_qty, "piece_pick quantity")
+        elif unit == "pallet":
+            n_cases = _require_int(raw_qty, "piece_pick quantity") * cpp
+        else:
+            raise DesError("INPUT_UNCONFIRMED", "件拣单位应为 case/each/piece 或 pallet", {"unit": unit})
+        if n_cases <= 0:
+            return
+        preferred = next(iter(sorted(self.slots.keys())), None)
+        if preferred is None:
+            raise DesError("INPUT_UNCONFIRMED", "件拣需要货位，但不要求单独的小件区")
+        chain = flow.get("flowId") or f"flow-piece-{flow_index + 1}"
+        pallet_eq = 1.0 / float(cpp)
+        for t_arr in self._arrival_times(n_cases):
+            tid = self._next_task_id("T-pcs")
+            self._add_task(
+                Task(
+                    task_id=tid,
+                    flow_kind="piece_pick",
+                    qty=pallet_eq,
+                    origin_node=self.slots[preferred]["accessNodeId"],
+                    dest_node=self.ship_dock["accessNodeId"],
+                    location_id=preferred,
+                    dock_id=self.ship_dock["elementId"],
+                    direction="outbound_ship",
+                    enqueue_t=t_arr,
+                    flow_chain_id=chain,
+                    source="external",
+                    case_qty=1,
+                    cases_per_pallet=cpp,
+                    counts_external=True,
+                ),
+                t_arr,
+                "task_spawn",
+            )
+
     def _generate_tasks(self) -> None:
         # 种子写入 RunManifest；整数均匀到达，无随机抖动 → 同输入可复现
         _ = int(self.seed_streams.get("demand", 42))
+        self._task_seq = 0
         flows = list(self.demand.get("flows") or [])
-        task_n = 0
-        window = float(
-            (self.demand.get("arrivalProfile") or {}).get("windowSec") or self.horizon
-        )
-        window = min(window, self.horizon)
-
-        def arrival_times(n: int) -> List[float]:
-            if n <= 0:
-                return []
-            if n == 1:
-                return [0.0]
-            return [window * i / n for i in range(n)]
-
-        for flow in flows:
+        for index, flow in enumerate(flows):
             fk = flow.get("flowKind")
-            if fk != "full_pallet":
-                self._warn("FLOW_KIND_STUB", f"flowKind={fk} 本切片未建模，已跳过")
+            if fk == "full_pallet":
+                self._spawn_full_pallet(flow)
                 continue
-            qty_total = float(flow.get("quantity") or 0)
-            if qty_total <= 0:
-                continue
-            n = int(round(qty_total))
-            intent = flow.get("intent") or flow.get("direction")
-            source = flow.get("source") or "external"
-            # intent 优先；否则 external + 无 downstream → inbound；storage/inventory → outbound
-            if intent in {"outbound", "outbound_ship"} or source in {"storage", "inventory"}:
-                direction = "outbound_ship"
-            elif intent in {"inbound", "inbound_putaway"} or source == "external":
-                direction = "inbound_putaway"
-            else:
-                direction = "outbound_ship"
-
-            times = arrival_times(n)
-            for i, t_arr in enumerate(times):
-                task_n += 1
-                if direction == "inbound_putaway":
-                    if not self.recv_dock:
-                        raise DesError("INPUT_UNCONFIRMED", "入库流需要收货月台")
-                    slot = self.inventory.pick_slot_with_capacity(1.0)
-                    if not slot:
-                        self._warn("NO_SLOT_CAPACITY", f"无库位容量承接入库任务 #{i+1}")
-                        continue
-                    tid = f"T-in-{task_n:04d}"
-                    self._add_task(
-                        Task(
-                            task_id=tid,
-                            flow_kind="full_pallet",
-                            qty=1.0,
-                            origin_node=self.recv_dock["accessNodeId"],
-                            dest_node=self.slots[slot]["accessNodeId"],
-                            location_id=slot,
-                            dock_id=self.recv_dock["elementId"],
-                            direction="inbound_putaway",
-                            enqueue_t=t_arr,
-                            flow_chain_id=tid,
-                        ),
-                        t_arr,
-                        "arrival",
+            if fk in {"break_bulk", "piece_pick"}:
+                if flow.get("source") == "derived":
+                    # 拆托已经生成下游发运。同一箱量再写成独立 flow 会把外部吞吐计两次。
+                    continue
+                basis = flow.get("inputBasis") or "explicit_quantity"
+                if basis != "explicit_quantity":
+                    raise DesError(
+                        "INPUT_UNCONFIRMED",
+                        "break_bulk/piece_pick 需要 explicit_quantity 的整数任务",
+                        {"inputBasis": basis, "flowKind": fk},
                     )
+                if fk == "break_bulk":
+                    self._spawn_break_bulk(flow, index)
                 else:
-                    if not self.ship_dock:
-                        raise DesError("INPUT_UNCONFIRMED", "出库流需要发运月台")
-                    preferred = next(iter(sorted(self.slots.keys())), None)
-                    if preferred is None:
-                        self._warn("NO_SLOT", "无货位可服务出库")
-                        continue
-                    tid = f"T-out-{task_n:04d}"
-                    self._add_task(
-                        Task(
-                            task_id=tid,
-                            flow_kind="full_pallet",
-                            qty=1.0,
-                            origin_node=self.slots[preferred]["accessNodeId"],
-                            dest_node=self.ship_dock["accessNodeId"],
-                            location_id=preferred,
-                            dock_id=self.ship_dock["elementId"],
-                            direction="outbound_ship",
-                            enqueue_t=t_arr,
-                            flow_chain_id=tid,
-                        ),
-                        t_arr,
-                        "task_spawn",
-                    )
+                    self._spawn_piece_pick(flow, index)
+                continue
+            self._warn("FLOW_KIND_STUB", f"flowKind={fk} 本切片未建模，已跳过")
 
         if not flows and self.inventory.initial_total > 0 and self.ship_dock:
-            n = int(round(self.inventory.initial_total))
-            for i, t_arr in enumerate(arrival_times(n)):
-                task_n += 1
+            n = _require_int(self.inventory.initial_total, "initialInventory")
+            for t_arr in self._arrival_times(n):
                 preferred = next(iter(sorted(self.slots.keys())))
-                tid = f"T-out-{task_n:04d}"
+                tid = self._next_task_id("T-out")
                 self._add_task(
                     Task(
                         task_id=tid,
@@ -382,6 +518,72 @@ class DesEngine:
                     "task_spawn",
                 )
 
+    def _spawn_derived_ship(self, task: Task, res: Resource) -> None:
+        """拆托完成后生成下游发运。中间产出不计外部吞吐，库存不再扣一次。"""
+        if not self.ship_dock:
+            raise DesError("INPUT_UNCONFIRMED", "拆托下游发运需要发运月台")
+        child_id = self._next_task_id("T-ship")
+        self._emit(
+            "break_bulk",
+            {
+                "taskId": task.task_id,
+                "flowChainId": task.flow_chain_id,
+                "cases": task.case_qty,
+                "casesPerPallet": task.cases_per_pallet,
+                "palletEq": task.qty,
+                "countsAsExternalThroughput": False,
+                "derivedTaskId": child_id,
+                "source": "derived",
+                "note": "拆托是中间产出，不计入外部吞吐",
+            },
+        )
+        task.status = "done"
+        self._emit(
+            "task_complete",
+            {
+                "taskId": task.task_id,
+                "status": "done",
+                "waitSec": task.wait_sec,
+                "busySec": task.busy_sec,
+                "direction": "break_bulk",
+                "countsAsExternalThroughput": False,
+            },
+        )
+        res.task_id = None
+        child = Task(
+            task_id=child_id,
+            flow_kind="piece_pick",
+            qty=task.qty,
+            origin_node=res.node_id,
+            dest_node=self.ship_dock["accessNodeId"],
+            location_id=task.location_id,
+            dock_id=self.ship_dock["elementId"],
+            direction="outbound_ship",
+            enqueue_t=self.t,
+            flow_chain_id=task.flow_chain_id,
+            source="derived",
+            parent_task_id=task.task_id,
+            case_qty=task.case_qty,
+            cases_per_pallet=task.cases_per_pallet,
+            skip_inventory_pick=True,
+            picked=True,
+            counts_external=True,
+            phase="to_dest",
+        )
+        self.tasks[child_id] = child
+        self._emit(
+            "derived_ship",
+            {
+                "taskId": child_id,
+                "parentTaskId": task.task_id,
+                "flowChainId": task.flow_chain_id,
+                "source": "derived",
+                "cases": task.case_qty,
+                "countsAsExternalThroughput": False,
+            },
+        )
+        self._assign(res, child)
+
     def _resource(self, rid: str) -> Resource:
         return next(r for r in self.resources if r.resource_id == rid)
 
@@ -392,10 +594,15 @@ class DesEngine:
         idle.sort(key=lambda r: (r.last_busy_end, r.resource_id))
         return idle[0]
 
-    def _pool_for_task(self, _task: Task) -> str:
-        for p in self.operating.get("resourcePools") or []:
-            if (p.get("resourceType") or "forklift") == "forklift":
-                return p.get("id") or "pool-forklift"
+    def _pool_for_task(self, task: Task) -> str:
+        pools = list(self.operating.get("resourcePools") or [])
+        if task.flow_kind == "piece_pick" and task.source != "derived":
+            for pool in pools:
+                if pool.get("resourceType") == "picker" and int(pool.get("count") or 0) > 0:
+                    return pool.get("id") or "pool-picker"
+        for pool in pools:
+            if (pool.get("resourceType") or "forklift") == "forklift":
+                return pool.get("id") or "pool-forklift"
         return self.resources[0].pool_id
 
     def _clear_wait(self, task: Task) -> None:
@@ -428,7 +635,10 @@ class DesEngine:
         task.resource_id = res.resource_id
         res.task_id = task.task_id
 
-        if task.direction == "outbound_ship":
+        if task.direction == "outbound_ship" and (task.skip_inventory_pick or task.picked):
+            path1 = shortest_path(self.adj, res.node_id, task.dest_node)
+            path2 = {"nodes": [], "edges": []}
+        elif task.direction in {"outbound_ship", "break_bulk"}:
             slot = self.inventory.pick_slot_with_stock(task.qty, preferred=task.location_id)
             if not slot:
                 # 仍派发到偏好位，取货时 STOCKOUT → failed
@@ -437,7 +647,11 @@ class DesEngine:
             pick_node = self.slots[slot]["accessNodeId"]
             task.origin_node = pick_node
             path1 = shortest_path(self.adj, res.node_id, pick_node)
-            path2 = shortest_path(self.adj, pick_node, task.dest_node)
+            if task.direction == "break_bulk":
+                # 拆托发生在货位，不另设拆托区；发运是随后生成的下游任务
+                path2 = {"nodes": [], "edges": []}
+            else:
+                path2 = shortest_path(self.adj, pick_node, task.dest_node)
         else:
             path1 = shortest_path(self.adj, res.node_id, task.origin_node)
             path2 = shortest_path(self.adj, task.origin_node, task.dest_node)
@@ -487,7 +701,7 @@ class DesEngine:
             self._try_enter_edge(task, res)
 
     def _speed_for(self, task: Task) -> float:
-        if task.direction == "outbound_ship":
+        if task.direction in {"outbound_ship", "break_bulk"}:
             return self.travel_speed if task.picked else self.empty_speed
         # inbound：离开收货口后载货
         return self.travel_speed if task.phase == "to_dest" else self.empty_speed
@@ -590,9 +804,9 @@ class DesEngine:
         """到达某节点后的业务动作 / 继续下一段。"""
         res.node_id = node_id
 
-        # 出库：到取货点且未取货
+        # 出库或拆托：到取货点且未取货。拆托取走整托后不在这里发运。
         if (
-            task.direction == "outbound_ship"
+            task.direction in {"outbound_ship", "break_bulk"}
             and not task.picked
             and node_id == task.origin_node
         ):
@@ -612,16 +826,23 @@ class DesEngine:
                     "taskId": task.task_id,
                     "locationId": task.location_id,
                     "qty": task.qty,
+                    "flowKind": task.flow_kind,
+                    "caseCount": task.case_qty,
                 },
             )
-            dt = self.process_pick
+            if task.direction == "break_bulk":
+                dt = self.process_break
+                nxt = "spawn_ship"
+            else:
+                dt = self.process_piece if task.flow_kind == "piece_pick" else self.process_pick
+                nxt = "continue"
             task.busy_sec += dt
             res.busy_sec += dt
             self._schedule(
                 self.t + dt,
                 PHASE_COMPLETE,
                 "process_done",
-                {"taskId": task.task_id, "next": "continue"},
+                {"taskId": task.task_id, "next": nxt},
             )
             return
 
@@ -673,13 +894,30 @@ class DesEngine:
         res.busy_sec += dt
         self._emit(
             "outbound",
-            {"taskId": task.task_id, "dockId": task.dock_id, "palletEq": task.qty},
+            {
+                "taskId": task.task_id,
+                "dockId": task.dock_id,
+                "palletEq": task.qty,
+                "caseCount": task.case_qty,
+                "source": task.source,
+                "parentTaskId": task.parent_task_id,
+                "flowChainId": task.flow_chain_id,
+                "countsAsExternalThroughput": True,
+            },
         )
         self._schedule(
             self.t + dt,
             PHASE_COMPLETE,
             "task_complete",
-            {"taskId": task.task_id, "outbound": True, "palletEq": task.qty},
+            {
+                "taskId": task.task_id,
+                "outbound": True,
+                "palletEq": task.qty,
+                "caseCount": task.case_qty,
+                "source": task.source,
+                "parentTaskId": task.parent_task_id,
+                "flowChainId": task.flow_chain_id,
+            },
         )
 
     def _on_haul_arrive(self, payload: Dict[str, Any]) -> None:
@@ -714,7 +952,16 @@ class DesEngine:
             self.outbound_pallet_eq += peq
             eid = self._emit(
                 "outbound_complete",
-                {"taskId": task.task_id, "palletEq": peq, "dockId": task.dock_id},
+                {
+                    "taskId": task.task_id,
+                    "palletEq": peq,
+                    "dockId": task.dock_id,
+                    "caseCount": payload.get("caseCount"),
+                    "source": payload.get("source") or task.source,
+                    "parentTaskId": payload.get("parentTaskId"),
+                    "flowChainId": payload.get("flowChainId") or task.flow_chain_id,
+                    "countsAsExternalThroughput": True,
+                },
             )
             self.outbound_event_ids.append(eid)
         task.status = "done"
@@ -766,6 +1013,9 @@ class DesEngine:
             elif kind == "process_done":
                 task = self.tasks[p["taskId"]]
                 res = self._resource(task.resource_id)  # type: ignore[arg-type]
+                if p.get("next") == "spawn_ship":
+                    self._spawn_derived_ship(task, res)
+                    continue
                 if p.get("next") == "continue":
                     if task.edge_i < len(task.path_edges):
                         self._try_enter_edge(task, res)
