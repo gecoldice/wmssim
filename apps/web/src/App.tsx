@@ -27,7 +27,13 @@ type PrepareState = {
 
 type Cards = {
   throughput?: { value?: number | null; unit?: string; outboundPalletEq?: number };
-  wait?: { meanSec?: number | null; p95Sec?: number | null; sampleCount?: number; unit?: string };
+  wait?: {
+    meanSec?: number | null;
+    p95Sec?: number | null;
+    sampleCount?: number;
+    unit?: string;
+    p95Meta?: { sampleInsufficient?: boolean };
+  };
   utilization?: { value?: number | null; unit?: string; note?: string };
   bottleneck?: { top1?: { entityId?: string | null; note?: string; waitSec?: number } };
 };
@@ -971,7 +977,10 @@ export function App() {
                 <article>
                   <h3>等待</h3>
                   <p className="kpi">{fmt(sim.cards.wait?.meanSec, 1)}</p>
-                  <p>均值秒 · P95 {fmt(sim.cards.wait?.p95Sec, 1)}</p>
+                  <p>
+                    均值秒 · P95 {fmt(sim.cards.wait?.p95Sec, 1)}
+                    {sim.cards.wait?.p95Meta?.sampleInsufficient ? "（样本不足，不报 P95）" : ""}
+                  </p>
                   <p>样本 {sim.cards.wait?.sampleCount ?? "—"}</p>
                 </article>
                 <article>
