@@ -117,7 +117,12 @@
           "unit": { "type": "string" },
           "source": {
             "type": "string",
-            "enum": ["external", "derived"]
+            "enum": ["external", "derived", "storage", "inventory"]
+          },
+          "intent": {
+            "type": "string",
+            "enum": ["inbound", "outbound", "inbound_putaway", "outbound_ship"],
+            "description": "M3：显式入/出库意图；缺省时由 source 推断"
           },
           "downstream": { "type": ["object", "null"], "additionalProperties": true },
           "conversionRef": { "type": ["string", "null"] },

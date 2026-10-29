@@ -1,4 +1,4 @@
-"""进程内项目/布局/规划/派生存储（M2 本地）。无远程 DB。"""
+"""进程内项目/布局/规划/派生/跑次存储（M3 本地）。无远程 DB。"""
 
 from __future__ import annotations
 
@@ -22,6 +22,9 @@ class ProjectRecord:
     demands: Dict[str, Dict[str, Dict[str, Any]]] = field(default_factory=dict)
     # demandId -> revision -> DemandRevision
     demand_heads: Dict[str, str] = field(default_factory=dict)
+    operating: Dict[str, Dict[str, Dict[str, Any]]] = field(default_factory=dict)
+    # operatingId -> revision -> OperatingProfileRevision
+    operating_heads: Dict[str, str] = field(default_factory=dict)
     layouts: Dict[str, Dict[str, Dict[str, Any]]] = field(default_factory=dict)
     # layoutId -> revision -> LayoutDocumentRevision
     layout_heads: Dict[str, str] = field(default_factory=dict)
@@ -32,6 +35,7 @@ class ProjectRecord:
     jobs: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     candidates: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # candidateId -> cand
     planning_drafts: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # draftId -> request
+    runs: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # runId -> run result
 
 
 class MemoryStore:
@@ -39,6 +43,7 @@ class MemoryStore:
         self.projects: Dict[str, ProjectRecord] = {}
         self._orphan_jobs: Dict[str, Dict[str, Any]] = {}
         self._global_candidates: Dict[str, Dict[str, Any]] = {}
+        self._global_runs: Dict[str, str] = {}  # runId -> projectId
 
     def create_project(self, name: str, unit_system: str = "metric") -> Dict[str, Any]:
         pid = f"project-{uuid4().hex[:8]}"
@@ -107,6 +112,46 @@ class MemoryStore:
             return None
         doc = rec.demands[demand_id].get(rev)
         return deepcopy(doc) if doc else None
+
+    def put_operating(self, project_id: str, operating: Dict[str, Any]) -> Dict[str, Any]:
+        rec = self.projects[project_id]
+        oid = operating["id"]
+        rev = operating["revision"]
+        if oid not in rec.operating:
+            rec.operating[oid] = {}
+        rec.operating[oid][rev] = deepcopy(operating)
+        rec.operating_heads[oid] = rev
+        return deepcopy(operating)
+
+    def get_operating(
+        self, project_id: str, operating_id: str, revision: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        rec = self.projects.get(project_id)
+        if not rec or operating_id not in rec.operating:
+            return None
+        rev = revision or rec.operating_heads.get(operating_id)
+        if not rev:
+            return None
+        doc = rec.operating[operating_id].get(rev)
+        return deepcopy(doc) if doc else None
+
+    def put_run(self, project_id: str, run: Dict[str, Any]) -> Dict[str, Any]:
+        rec = self.projects[project_id]
+        rid = run["runId"]
+        rec.runs[rid] = deepcopy(run)
+        self._global_runs[rid] = project_id
+        return deepcopy(run)
+
+    def get_run(self, run_id: str) -> Optional[Dict[str, Any]]:
+        pid = self._global_runs.get(run_id)
+        if pid:
+            rec = self.projects.get(pid)
+            if rec and run_id in rec.runs:
+                return deepcopy(rec.runs[run_id])
+        for rec in self.projects.values():
+            if run_id in rec.runs:
+                return deepcopy(rec.runs[run_id])
+        return None
 
     def put_planning_draft(self, project_id: str, draft_id: str, request: Dict[str, Any]) -> Dict[str, Any]:
         rec = self.projects[project_id]

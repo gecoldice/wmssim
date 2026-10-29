@@ -1,7 +1,4 @@
-"""simapp API — M2 可选自动规划：场地确认 / PlanningJob / 采用与局部重排。
-
-手动路径（M1）仍独立可用；quick 评估不宣称运营效率。
-"""
+"""simapp API — M3 真实 DES 推演 + M2 规划 + M1 手动路径。"""
 
 from __future__ import annotations
 
@@ -15,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from simapp_derive import derive_layout_snapshot, derived_index, input_fingerprint
+from simapp_des import ENGINE_VERSION, DesError, run_des
 from simapp_plan import adopt_candidate, run_planning_job
 from simapp_plan.confirm import FacilityGateError, assert_facility_usable_for_planning, facility_confirmation_status
 from simapp_plan.locks import LockConflictError, assert_locks_preserved
@@ -27,8 +25,8 @@ ROOT = Path(__file__).resolve().parents[3]
 
 app = FastAPI(
     title="simapp API",
-    version="0.3.2",
-    description="M2 optional planning: facility confirm, PlanningJob, adopt/replan; M1 manual path intact.",
+    version="0.3.3",
+    description="M3 DES: simulation-jobs / runs; M2 planning; M1 manual prepare path.",
 )
 
 app.add_middleware(
@@ -110,6 +108,23 @@ class AdoptCandidateRequest(BaseModel):
     expectedVariantRevision: Optional[str] = None
 
 
+class PutOperatingRequest(BaseModel):
+    projectId: str
+    operating: Dict[str, Any]
+
+
+class SimulationJobRequest(BaseModel):
+    projectId: str
+    variantRef: RevisionRef
+    scenarioPackage: Dict[str, Any]
+    # 可选内嵌；否则按 scenarioPackage 的 demandRef/operatingRef 从 store 取
+    demand: Optional[Dict[str, Any]] = None
+    operating: Optional[Dict[str, Any]] = None
+    expectedLayoutRevision: Optional[str] = None
+    validationRef: Optional[Dict[str, Any]] = None
+    sync: bool = True
+
+
 def _error(code: str, message: str, *, details: Any = None, status: int = 422) -> HTTPException:
     return HTTPException(
         status_code=status,
@@ -130,16 +145,18 @@ def health() -> Dict[str, Any]:
         "contractVersion": CONTRACT_VERSION,
         "snapshotSchemaVersion": "0.2",
         "equipSchemaVersion": "0.2",
-        "milestone": "M2",
+        "milestone": "M3",
+        "engineVersion": ENGINE_VERSION,
         "capabilities": {
             "manualLayout": True,
             "deriveValidate": True,
             "planning": True,
             "planningScope": "DEC-05 ambient single-floor axis-aligned + ST-PAL-01",
-            "evaluationLevel": ["quick"],
-            "des": False,
+            "evaluationLevel": ["quick", "detailed"],
+            "des": True,
             "kpiFromUiDemo": False,
-            "claimsOperationalEfficiency": False,
+            "claimsOperationalEfficiency": True,
+            "fourCards": ["throughput", "wait", "utilization", "bottleneck"],
         },
         "contractsRoot": str(ROOT / "contracts"),
     }
@@ -244,6 +261,16 @@ def put_demand(body: PutDemandRequest) -> Dict[str, Any]:
     if not STORE.get_project(project_id):
         raise _error("NOT_FOUND", f"project {project_id} not found", status=404)
     return STORE.put_demand(project_id, demand)
+
+
+@app.post("/api/v1/operating-profiles", status_code=201)
+def put_operating(body: PutOperatingRequest) -> Dict[str, Any]:
+    operating = body.operating
+    if operating.get("contractVersion") != CONTRACT_VERSION:
+        raise _error("CONTRACT_VERSION", "operating contractVersion must be 0.3")
+    if not STORE.get_project(body.projectId):
+        raise _error("NOT_FOUND", f"project {body.projectId} not found", status=404)
+    return STORE.put_operating(body.projectId, operating)
 
 
 @app.post("/api/v1/projects/{project_id}/planning-drafts", status_code=201)
@@ -634,6 +661,201 @@ def adopt(candidate_id: str, body: AdoptCandidateRequest) -> Dict[str, Any]:
         "note": adopted["note"],
         "claimsOperationalEfficiency": False,
     }
+
+
+@app.post("/api/v1/simulation-jobs", status_code=202)
+def create_simulation_job(body: SimulationJobRequest) -> Dict[str, Any]:
+    """DEV-10/11：在 simulationReady 的历史布局 Snapshot 上跑真实 DES。"""
+    project_id = body.projectId
+    if not STORE.get_project(project_id):
+        raise _error("NOT_FOUND", f"project {project_id} not found", status=404)
+
+    scenario = body.scenarioPackage
+    if scenario.get("contractVersion") != CONTRACT_VERSION:
+        raise _error("CONTRACT_VERSION", "scenarioPackage contractVersion must be 0.3")
+
+    variant = STORE.get_variant(project_id, body.variantRef.id)
+    if not variant:
+        raise _error("NOT_FOUND", "variant not found", status=404)
+    if body.variantRef.revision and variant.get("revision") != body.variantRef.revision:
+        raise _error(
+            "REVISION_CONFLICT",
+            "variant revision mismatch",
+            details={
+                "expected": body.variantRef.revision,
+                "actual": variant.get("revision"),
+            },
+            status=409,
+        )
+
+    layout_ref = variant.get("layoutRef") or {}
+    layout_id = layout_ref.get("id")
+    layout_revision = layout_ref.get("revision")
+    if not layout_id or not layout_revision:
+        raise _error("INPUT_UNCONFIRMED", "variant 缺少 layoutRef")
+
+    prepare = STORE.get_prepare_result(project_id, layout_id, layout_revision)
+    if not prepare or not prepare.get("simulationReady"):
+        raise _error(
+            "NOT_SIMULATION_READY",
+            "须先 prepare 且 validation pass（simulationReady）",
+            details={"layoutId": layout_id, "revision": layout_revision},
+            status=409,
+        )
+
+    derived = prepare.get("derivedLayout") or {}
+    snapshot = derived.get("layoutSnapshot")
+    if not snapshot:
+        raise _error("NOT_FOUND", "prepare 结果缺 layoutSnapshot", status=404)
+
+    expected_rev = (
+        body.expectedLayoutRevision
+        or scenario.get("expectedLayoutRevision")
+        or layout_revision
+    )
+    if expected_rev != snapshot.get("layoutRevision"):
+        raise _error(
+            "LAYOUT_REVISION_MISMATCH",
+            "expectedLayoutRevision 与历史快照 layoutRevision 不相等",
+            details={"expected": expected_rev, "actual": snapshot.get("layoutRevision")},
+        )
+
+    demand = body.demand
+    if demand is None:
+        dref = scenario.get("demandRef") or {}
+        demand = STORE.get_demand(project_id, dref.get("id"), dref.get("revision"))
+    if not demand:
+        raise _error("NOT_FOUND", "demand 未找到；请 POST /demands 或内嵌 demand", status=404)
+
+    operating = body.operating
+    if operating is None:
+        oref = scenario.get("operatingRef") or {}
+        operating = STORE.get_operating(project_id, oref.get("id"), oref.get("revision"))
+    if not operating:
+        raise _error(
+            "NOT_FOUND",
+            "operating 未找到；请 POST /operating-profiles 或内嵌 operating",
+            status=404,
+        )
+
+    job_id = f"simjob-{uuid4().hex[:10]}"
+    job: Dict[str, Any] = {
+        "id": job_id,
+        "kind": "simulation",
+        "state": "running",
+        "phase": "des",
+        "outcome": None,
+        "variantRef": body.variantRef.model_dump(),
+        "layoutRef": {"id": layout_id, "revision": layout_revision},
+        "scenarioId": scenario.get("scenarioId"),
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "error": None,
+        "resultRefs": None,
+    }
+    STORE.attach_job(project_id, job)
+
+    try:
+        result = run_des(
+            snapshot=snapshot,
+            demand=demand,
+            operating=operating,
+            run_control=scenario.get("runControl") or {},
+            expected_layout_revision=expected_rev,
+            scenario_id=scenario.get("scenarioId"),
+            variant_ref={"id": variant["id"], "revision": variant["revision"]},
+            validation_ref=body.validationRef
+            or {
+                "validationReportId": (prepare.get("validationReport") or {}).get("id"),
+                "status": (prepare.get("validationReport") or {}).get("status"),
+            },
+            faults=list(operating.get("faults") or scenario.get("faults") or []),
+            skill_tags_present=any(
+                bool(p.get("skillTags")) for p in (operating.get("resourcePools") or [])
+            ),
+            shift_schedule_present=bool(operating.get("shiftSchedule")),
+        )
+        # 回放绑定历史布局修订（不可指向当前草稿）
+        result["replayBinding"] = {
+            "layoutId": layout_id,
+            "layoutRevision": layout_revision,
+            "prepareInputFingerprint": prepare.get("inputFingerprint"),
+            "note": "轨迹/KPI 绑定本次 prepare 的只读 Snapshot，不使用当前未 prepare 草稿",
+        }
+        STORE.put_run(project_id, result)
+        job["state"] = "succeeded"
+        job["outcome"] = "completed"
+        job["finishedAt"] = datetime.now(timezone.utc).isoformat()
+        job["resultRefs"] = {
+            "runId": result["runId"],
+            "layoutRevision": layout_revision,
+            "engineVersion": result.get("engineVersion"),
+        }
+        STORE.attach_job(project_id, job)
+        return {
+            "jobId": job_id,
+            "state": job["state"],
+            "outcome": job["outcome"],
+            "runId": result["runId"],
+            "layoutRevision": layout_revision,
+            "kpi": result["kpi"],
+            "kpiEvidence": result["kpiEvidence"],
+            "runManifest": result["runManifest"],
+            "inventoryConservation": {
+                k: result["inventoryConservation"][k]
+                for k in (
+                    "ok",
+                    "initial",
+                    "inbound",
+                    "outbound",
+                    "ending",
+                    "loss",
+                    "residual",
+                    "formula",
+                )
+            },
+            "trajectorySummary": {
+                "segmentCount": len(result["trajectory"].get("segments") or []),
+                "taskCount": len(result["trajectory"].get("tasks") or []),
+                "layoutRevision": result["trajectory"].get("layoutRevision"),
+            },
+            "replayBinding": result["replayBinding"],
+            "warnings": result["runManifest"].get("warnings"),
+            "kpiFromUiDemo": False,
+        }
+    except DesError as exc:
+        job["state"] = "failed"
+        job["outcome"] = "rejected"
+        job["error"] = {
+            "code": exc.code,
+            "message": exc.message,
+            "details": exc.details,
+            "retryable": False,
+            "traceId": None,
+        }
+        job["finishedAt"] = datetime.now(timezone.utc).isoformat()
+        STORE.attach_job(project_id, job)
+        raise _error(exc.code, exc.message, details=exc.details, status=422) from exc
+    except Exception as exc:  # noqa: BLE001
+        job["state"] = "failed"
+        job["error"] = {
+            "code": "COMPUTATION_FAILED",
+            "message": str(exc),
+            "details": None,
+            "retryable": True,
+            "traceId": None,
+        }
+        job["finishedAt"] = datetime.now(timezone.utc).isoformat()
+        STORE.attach_job(project_id, job)
+        raise _error("COMPUTATION_FAILED", str(exc), status=500) from exc
+
+
+@app.get("/api/v1/runs/{run_id}")
+def get_run(run_id: str) -> Dict[str, Any]:
+    """RunManifest + 四卡 + 事件证据 + 轨迹；回放绑历史 layoutRevision。"""
+    run = STORE.get_run(run_id)
+    if not run:
+        raise _error("NOT_FOUND", f"run {run_id} not found", status=404)
+    return run
 
 
 @app.get("/api/v1/jobs/{job_id}")

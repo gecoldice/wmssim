@@ -1,4 +1,4 @@
-"""Worker entrypoint — M2：规划基线可被 API 同进程调用；无 DES。"""
+"""Worker entrypoint — M3：DES 经 API /simulation-jobs；规划/派生同进程可调。"""
 
 from __future__ import annotations
 
@@ -13,29 +13,34 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="simapp worker")
     parser.add_argument("--ping", action="store_true", help="print capability JSON and exit")
     args = parser.parse_args()
+    try:
+        from simapp_des import ENGINE_VERSION
+    except ImportError:
+        ENGINE_VERSION = "unavailable"
     payload = {
         "role": "compute-worker",
         "status": "idle",
         "contractVersion": "0.3",
-        "milestone": "M2",
+        "milestone": "M3",
+        "engineVersion": ENGINE_VERSION,
         "capabilities": {
             "geometry": "aabb+segment",
             "derive": True,
             "validate": True,
             "planning": True,
             "planningScope": "DEC-05 ambient single-floor axis-aligned + ST-PAL-01",
-            "evaluationLevel": ["quick"],
-            "des": False,
+            "evaluationLevel": ["quick", "detailed"],
+            "des": True,
             "kpiFromUiDemo": False,
-            "claimsOperationalEfficiency": False,
+            "claimsOperationalEfficiency": True,
         },
         "contracts": str(ROOT / "contracts"),
         "fixtures": str(ROOT / "fixtures"),
-        "message": "M2: planning baseline via API /planning-jobs; quick geo/path only; no DES",
+        "message": "M3: DES via API /simulation-jobs; prepare required; KPI from events not UI demo",
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if not args.ping:
-        print("No job loop; use API /planning-jobs and /layouts/{id}/prepare-jobs.")
+        print("No job loop; use API /simulation-jobs, /planning-jobs, /layouts/{id}/prepare-jobs.")
     return 0
 
 

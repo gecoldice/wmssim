@@ -123,10 +123,11 @@ def test_api_adopt_and_conflict() -> None:
     reset_store()
     client = TestClient(app)
     health = client.get("/api/v1/health").json()
-    assert health["milestone"] == "M2"
+    # M3 起 milestone 前进；规划路径仍独立，且 quick 候选不得宣称运营效率
+    assert health["milestone"] in {"M2", "M3"}
     assert health["capabilities"]["planning"] is True
-    assert health["capabilities"]["claimsOperationalEfficiency"] is False
     assert health["capabilities"]["manualLayout"] is True
+    assert health["capabilities"]["kpiFromUiDemo"] is False
 
     project = client.post(
         "/api/v1/projects", json={"name": "M2 demo", "unitSystem": "metric"}
@@ -269,7 +270,8 @@ def test_no_ops_efficiency_claim() -> None:
     result = run_planning_job(req, facility=facility)
     assert result["job"]["outcome"] == "unsupported"
     assert result["job"]["error"]["code"] == "UNSUPPORTED_SCENARIO"
-    print("PASS FX-M2-NO-DES detailed evaluation unsupported (no fake ops KPI)")
+    # 规划器 detailed 仍非 DES 入口；真实效率走 /simulation-jobs（见 test:m3）
+    print("PASS FX-M2-NO-DES planning detailed unsupported (DES is /simulation-jobs)")
 
 
 def main() -> int:

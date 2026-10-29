@@ -21,6 +21,22 @@ type PrepareResult = {
   validationReport?: { status: string; checks: Array<{ ruleId: string; message: string }> };
 };
 
+type SimResult = {
+  runId?: string;
+  layoutRevision?: string;
+  kpi?: {
+    cards?: {
+      throughput?: { value?: number; outboundPalletEq?: number };
+      wait?: { meanSec?: number | null; sampleCount?: number };
+      utilization?: { value?: number | null };
+      bottleneck?: { top1?: { entityId?: string | null; note?: string } };
+    };
+  };
+  inventoryConservation?: { ok?: boolean; residual?: number };
+  replayBinding?: { layoutRevision?: string };
+  warnings?: Array<{ code: string; message: string }>;
+};
+
 const FX01_FACILITY = {
   contractVersion: "0.3",
   id: "facility-fx01",
@@ -157,12 +173,94 @@ const FX01_DEMAND = {
   totalDemand: null,
 };
 
+const FX_M3_DEMAND = {
+  contractVersion: "0.3",
+  id: "demand-fx-m3",
+  revision: "d-m3-1",
+  parentRef: null,
+  goodsGroups: [
+    {
+      id: "gg-std-pallet",
+      loadUnit: "pallet",
+      dimensionsM: { length: 1.2, width: 1.0, height: 1.5 },
+      grossWeightKg: 800,
+      stackability: "stackable",
+      allowedStorageTypes: ["ST-PAL-01"],
+      quantityUnit: "pallet",
+      evidence: {
+        sourceKind: "demo",
+        sourceRef: "FX-M3",
+        confirmationStatus: "confirmed",
+        updatedAt: "2026-10-29T02:00:00+08:00",
+      },
+    },
+  ],
+  inventoryTargets: [{ goodsGroupId: "gg-std-pallet", quantity: 8, unit: "pallet" }],
+  initialInventory: [
+    {
+      goodsGroupId: "gg-std-pallet",
+      quantity: 4,
+      unit: "pallet",
+      locationInstanceId: "rack-001",
+    },
+  ],
+  flows: [
+    {
+      flowKind: "full_pallet",
+      intent: "outbound",
+      inputBasis: "explicit_quantity",
+      quantity: 4,
+      unit: "pallet",
+      source: "storage",
+      downstream: null,
+      conversionRef: null,
+      parentFlowId: null,
+    },
+  ],
+  arrivalProfile: {
+    kind: "uniform",
+    windowSec: 600,
+    unit: "pallet",
+    paramsSource: "fx-m3-fixed",
+  },
+  serviceTargets: [],
+  assumptions: ["M3 固定出库演示"],
+  totalDemand: { quantity: 4, unit: "pallet" },
+};
+
+const FX_M3_OPERATING = {
+  contractVersion: "0.3",
+  id: "op-fx-m3",
+  revision: "o-m3-1",
+  parentRef: null,
+  resourcePools: [
+    {
+      id: "pool-forklift",
+      resourceType: "forklift",
+      count: 1,
+      capabilityRef: "cap-forklift-std",
+      availableWindowSec: 3600,
+      homeInstanceIds: [],
+      skillTags: ["certified"],
+    },
+  ],
+  serviceParameters: {
+    travelSpeedMps: 1.2,
+    emptySpeedMps: 1.5,
+    processSec: { pick: 10, ship: 5, full_pallet: 10 },
+  },
+  routingPolicy: { kind: "shortest_path" },
+  shiftWindow: { startSec: 0, endSec: 3600 },
+  faults: [{ faultType: "edge_block", enabled: true, startTime: 100, duration: 60 }],
+};
+
 export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string>("");
   const [ready, setReady] = useState<PrepareResult | null>(null);
+  const [sim, setSim] = useState<SimResult | null>(null);
 
   const sample = planeToWorld3d({ x: 12, y: 14, yawDeg: 30 }, 1.5);
 
@@ -185,6 +283,7 @@ export function App() {
     setBusy(true);
     setError(null);
     setReady(null);
+    setSim(null);
     const lines: string[] = [];
     try {
       const pRes = await fetch("/api/v1/projects", {
@@ -251,6 +350,125 @@ export function App() {
       lines.push(
         `派生+校验 → prepareStatus=${prep.prepareStatus} simulationReady=${prep.simulationReady} validation=${prep.validationStatus}`,
       );
+      setLog(lines.join("\n"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setLog(lines.join("\n"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runDesSimulation() {
+    setBusy(true);
+    setError(null);
+    setReady(null);
+    setSim(null);
+    const lines: string[] = [];
+    try {
+      const pRes = await fetch("/api/v1/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "M3 DES 演示", unitSystem: "metric" }),
+      });
+      if (!pRes.ok) throw new Error(`create project ${pRes.status}`);
+      const project = await pRes.json();
+      lines.push(`项目 ${project.id}`);
+
+      await fetch(`/api/v1/projects/${project.id}/facility-revisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ facility: FX01_FACILITY }),
+      });
+
+      const lRes = await fetch(`/api/v1/layouts/layout-doc-fx01/revisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          document: FX01_LAYOUT,
+        }),
+      });
+      if (!lRes.ok) throw new Error(`layout ${lRes.status}`);
+      const saved = await lRes.json();
+      lines.push(`布局 ${saved.layoutRef.revision}`);
+
+      const vRes = await fetch(`/api/v1/projects/${project.id}/variants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "DES 方案",
+          source: "manual",
+          layoutRef: saved.layoutRef,
+        }),
+      });
+      const variant = await vRes.json();
+
+      const prepRes = await fetch(`/api/v1/layouts/layout-doc-fx01/prepare-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          layoutRef: saved.layoutRef,
+          facilityRef: { id: "facility-fx01", revision: "f-r1" },
+          ruleSetRefs: [{ id: "ruleset.m1.geometry", revision: "0.1" }],
+          sync: true,
+        }),
+      });
+      const prep = await prepRes.json();
+      setReady(prep);
+      lines.push(`prepare simulationReady=${prep.simulationReady}`);
+
+      await fetch("/api/v1/demands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, demand: FX_M3_DEMAND }),
+      });
+      await fetch("/api/v1/operating-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, operating: FX_M3_OPERATING }),
+      });
+
+      const simRes = await fetch("/api/v1/simulation-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          variantRef: { id: variant.id, revision: variant.revision },
+          scenarioPackage: {
+            contractVersion: "0.3",
+            scenarioId: "scenario-fx-m3",
+            demandRef: { id: "demand-fx-m3", revision: "d-m3-1" },
+            operatingRef: { id: "op-fx-m3", revision: "o-m3-1" },
+            runControl: {
+              horizonSec: 3600,
+              seedStreams: { demand: 42, dispatch: 42 },
+              demandSampleRef: null,
+              metricDefinitionVersion: "metrics-m3-v1",
+            },
+            expectedLayoutRevision: saved.layoutRef.revision,
+          },
+        }),
+      });
+      if (!simRes.ok) throw new Error(`simulation ${simRes.status}: ${await simRes.text()}`);
+      const result = (await simRes.json()) as SimResult & {
+        kpiEvidence?: { outboundEvents?: unknown[] };
+        trajectorySummary?: { segmentCount?: number; layoutRevision?: string };
+      };
+      setSim(result);
+      const cards = result.kpi?.cards;
+      lines.push(`DES runId=${result.runId}`);
+      lines.push(
+        `四卡 吞吐=${cards?.throughput?.outboundPalletEq}托 / ${cards?.throughput?.value?.toFixed?.(3)} 托/时；等待均值=${cards?.wait?.meanSec}s (n=${cards?.wait?.sampleCount})；利用率=${cards?.utilization?.value?.toFixed?.(4)}；瓶颈=${cards?.bottleneck?.top1?.entityId ?? cards?.bottleneck?.top1?.note}`,
+      );
+      lines.push(
+        `守恒 ok=${result.inventoryConservation?.ok}；回放绑 layoutRevision=${result.replayBinding?.layoutRevision}；轨迹段=${result.trajectorySummary?.segmentCount}`,
+      );
+      lines.push(
+        `警告: ${(result.warnings || []).map((w) => w.code).join(", ") || "(none)"}`,
+      );
+      lines.push("※ KPI 来自事件，非 UI 演示公式");
       setLog(lines.join("\n"));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -401,9 +619,8 @@ export function App() {
     <main className="shell">
       <h1 className="brand">simapp</h1>
       <p className="lead">
-        仓库布局规划与运营推演 · M2 可选自动规划（DEC-05）。外层契约 {CONTRACT_VERSION}；Snapshot /
-        equip {SNAPSHOT_SCHEMA_VERSION} / {EQUIP_SCHEMA_VERSION}。手动路径独立；quick
-        评估不宣称运营效率。
+        仓库布局规划与运营推演 · M3 真实 DES。外层契约 {CONTRACT_VERSION}；Snapshot / equip{" "}
+        {SNAPSHOT_SCHEMA_VERSION} / {EQUIP_SCHEMA_VERSION}。主四卡由事件派生；回放绑历史布局修订。
       </p>
       <div className="cta">
         <button type="button" onClick={pingApi} disabled={busy}>
@@ -411,6 +628,9 @@ export function App() {
         </button>
         <button type="button" onClick={runManualPrepare} disabled={busy}>
           手动路径：保存并推演准备
+        </button>
+        <button type="button" onClick={runDesSimulation} disabled={busy}>
+          M3：prepare 后真实推演
         </button>
         <button type="button" onClick={runPlanningAdopt} disabled={busy}>
           可选规划：生成并采用分支
@@ -422,9 +642,9 @@ export function App() {
       <section className="panel">
         <dl className="meta">
           <dt>milestone</dt>
-          <dd>M2 · DEV-06–09</dd>
-          <dt>planning</dt>
-          <dd>ST-PAL-01 真实设备候选；锁定不变；乐观锁不覆盖</dd>
+          <dd>M3 · DEV-10–11</dd>
+          <dt>DES</dt>
+          <dd>只读 Snapshot；FIFO；最短路；库存守恒；faultInject/skillTags 忽略告警</dd>
           <dt>3D map sample</dt>
           <dd>
             (12,14,yaw30) @1.5m → ({sample.position.x}, {sample.position.y}, {sample.position.z}),
@@ -442,7 +662,22 @@ export function App() {
                 prepareStatus: ready.prepareStatus,
                 validationStatus: ready.validationStatus,
                 layoutRevision: ready.layoutRevision,
-                failingChecks: ready.validationReport?.checks?.filter((c) => c.ruleId),
+              },
+              null,
+              2,
+            )}
+          </pre>
+        ) : null}
+        {sim ? (
+          <pre>
+            {JSON.stringify(
+              {
+                runId: sim.runId,
+                layoutRevision: sim.layoutRevision,
+                cards: sim.kpi?.cards,
+                conservation: sim.inventoryConservation,
+                replayBinding: sim.replayBinding,
+                warningCodes: (sim.warnings || []).map((w) => w.code),
               },
               null,
               2,
@@ -451,7 +686,7 @@ export function App() {
         ) : null}
         <p className="note">
           夹具：<code>npm run validate:fixtures</code> · M1：<code>npm run test:m1</code> · M2：
-          <code>npm run test:m2</code>
+          <code>npm run test:m2</code> · M3：<code>npm run test:m3</code>
         </p>
       </section>
     </main>

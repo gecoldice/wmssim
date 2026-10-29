@@ -41,6 +41,11 @@
           "homeInstanceIds": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "skillTags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "MVP 忽略并告警；调度仍 FIFO+空闲最久"
           }
         }
       }
@@ -61,6 +66,25 @@
       "properties": {
         "startSec": { "type": "number", "minimum": 0 },
         "endSec": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "shiftSchedule": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "MVP 忽略并告警"
+    },
+    "faults": {
+      "type": "array",
+      "description": "faultInject 契约占位；enabled=true 时引擎忽略并告警",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "faultType": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "startTime": { "type": "number" },
+          "duration": { "type": "number" }
+        }
       }
     }
   }

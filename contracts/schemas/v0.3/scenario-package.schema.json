@@ -41,6 +41,10 @@
         "demandSampleRef": { "type": ["string", "null"] },
         "metricDefinitionVersion": { "type": "string", "minLength": 1 }
       }
+    },
+    "expectedLayoutRevision": {
+      "type": ["string", "null"],
+      "description": "与 Snapshot.layoutRevision 字符串相等；也可由 simulation-jobs 请求显式传入"
     }
   }
 }

@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: simapp API
-  version: 0.3.2
+  version: 0.3.3
   description: |
     仓库布局规划与运营推演应用 API。
     外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
+    M3：真实 DES（/simulation-jobs、/runs）；四卡由事件派生；回放绑历史 layoutRevision。
     M2：场地确认、PlanningJob、基线规划（DEC-05）、候选采用/局部重排；
-    M1 手动路径仍独立；quick 评估不宣称运营效率；无 DES。
+    M1 手动路径仍独立；禁止 UI 演示公式进入 KPI。
 servers:
   - url: http://127.0.0.1:8000/api/v1
     description: local
@@ -15,6 +16,7 @@ tags:
   - name: projects
   - name: layouts
   - name: planning
+  - name: simulation
   - name: jobs
 paths:
   /health:
@@ -240,6 +242,42 @@ paths:
           description: new variant + layout; does not overwrite working copy
         "409":
           description: REVISION_CONFLICT
+  /operating-profiles:
+    post:
+      tags: [projects]
+      summary: Save operating profile revision
+      operationId: putOperatingProfile
+      responses:
+        "201":
+          description: operating profile saved
+  /simulation-jobs:
+    post:
+      tags: [simulation]
+      summary: Run DES on prepare-ready historical layout snapshot
+      operationId: createSimulationJob
+      responses:
+        "202":
+          description: RunManifest summary + four cards + evidence refs
+        "409":
+          description: NOT_SIMULATION_READY or revision conflict
+        "422":
+          description: LAYOUT_REVISION_MISMATCH or DES domain error
+  /runs/{runId}:
+    get:
+      tags: [simulation]
+      summary: Get immutable run (KPI, events, trajectory bound to layoutRevision)
+      operationId: getRun
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: full run payload
+        "404":
+          description: not found
   /jobs/{jobId}:
     get:
       tags: [jobs]

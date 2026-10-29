@@ -5,7 +5,8 @@
     "金样 KPI 待 DES 引擎实现后独立核对；本目录不含猜测 KPI 期望值。",
     "正例 expect=pass；反例 expect=fail 并声明失败原因类别。",
     "M1 派生/碰撞/窄通道/跨墙语义见 scripts/run_m1_checks.py（prepareExpect）。",
-    "M2 规划/锁定/采用语义见 scripts/run_m2_checks.py。"
+    "M2 规划/锁定/采用语义见 scripts/run_m2_checks.py。",
+    "M3 DES/四卡/回放见 scripts/run_m3_checks.py；KPI 由事件核对，非 UI 演示公式。"
   ],
   "entries": [
     {
@@ -196,6 +197,30 @@
       "schema": "v0.3/layout-document-revision.schema.json",
       "expect": "pass",
       "purpose": "局部重排底稿：锁定 dock + 区域外货架"
+    },
+    {
+      "id": "FX-M3-DEMAND",
+      "path": "valid/fx-m3-demand-outbound.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "M3 固定整数出库：初始 4 托全部发运"
+    },
+    {
+      "id": "FX-M3-OP",
+      "path": "valid/fx-m3-operating.json",
+      "kind": "operatingProfileRevision",
+      "schema": "v0.3/operating-profile-revision.schema.json",
+      "expect": "pass",
+      "purpose": "M3 运行编制；含 faultInject/skillTags 占位"
+    },
+    {
+      "id": "FX-M3-SCENARIO",
+      "path": "valid/fx-m3-scenario-package.json",
+      "kind": "scenarioPackage",
+      "schema": "v0.3/scenario-package.schema.json",
+      "expect": "pass",
+      "purpose": "M3 ScenarioPackage；metricDefinitionVersion=metrics-m3-v1"
     }
   ]
 }
