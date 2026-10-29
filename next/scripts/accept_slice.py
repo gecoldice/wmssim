@@ -28,6 +28,7 @@ from api.app.store import Store  # noqa: E402
 from des.derive import derive_snapshot  # noqa: E402
 from des.engine import ENGINE_VERSION, run_des  # noqa: E402
 from des.errors import DesError  # noqa: E402
+from des.validate import validate_layout  # noqa: E402
 
 FX = ROOT / "next" / "fixtures" / "manual-wh"
 SCHEMAS = ROOT / "next" / "contracts" / "schemas"
@@ -422,6 +423,60 @@ def main() -> int:
         print(f"grep {needle}:", needle in blob or needle in des_blob)
         check(needle not in blob and needle not in des_blob, f"absent {needle}")
 
+    print("\n=== mixed template geometry and segment playback contract ===")
+    web = ROOT / "next" / "web"
+    esbuild = web / "node_modules" / "esbuild" / "bin" / "esbuild"
+    if not esbuild.exists():
+        install = subprocess.run(["npm", "install"], cwd=web, text=True, capture_output=True, check=False)
+        print(install.stdout[-400:] if install.stdout else "")
+        if install.returncode != 0:
+            print(install.stderr)
+        check(install.returncode == 0 and esbuild.exists(), "esbuild available for UI contract bundle")
+    bundled = Path("/tmp/check-layout-ui.mjs")
+    bundle = subprocess.run(
+        [str(esbuild), "scripts/check-layout-ui.mjs", "--bundle", "--platform=node", "--format=esm", f"--outfile={bundled}"],
+        cwd=web,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    print(bundle.stdout)
+    if bundle.stderr:
+        print(bundle.stderr[-800:])
+    ran = subprocess.run(["node", str(bundled)], cwd=web, text=True, capture_output=True, check=False) if bundle.returncode == 0 else None
+    if ran:
+        print(ran.stdout)
+        if ran.stderr:
+            print(ran.stderr)
+    check(bundle.returncode == 0 and ran is not None and ran.returncode == 0, "UI template, footprints, ghost verdict, segment interpolation")
+    if ran and ran.returncode == 0:
+        facility = json.loads(Path("/tmp/mixed-slice-facility.json").read_text(encoding="utf-8"))
+        layout = json.loads(Path("/tmp/mixed-slice-layout.json").read_text(encoding="utf-8"))
+        snap = derive_snapshot(layout, facility, layout_revision="mixed-ui")
+        report = validate_layout(snap, facility, layout)
+        print("mixed validate", report.get("status"))
+        for row in report.get("checks") or []:
+            if row.get("status") == "fail":
+                print(" ", row.get("ruleId"), row.get("message"))
+        kinds = {el.get("typeElementId"): el.get("kind") for el in snap["elements"] if el.get("typeElementId")}
+        print("kinds", {key: kinds[key] for key in sorted(kinds)})
+        check(report.get("status") == "pass", "mixed template authoritative geometry passes")
+        check(kinds.get("OUT-PACK-01") == "station" and kinds.get("OUT-DOCK-01") == "dock", "OUT-PACK is not a ship dock")
+        check(kinds.get("ST-PAL-01") == "slot" and kinds.get("ST-FLOOR-01") == "slot", "racks and floor stacks are slots")
+        mixed_run = run_des(
+            snapshot=snap,
+            demand=demand,
+            operating=operating,
+            run_control={"horizonSec": 3600, "seedStreams": {"demand": 7}, "metricDefinitionVersion": "metrics-slice-manual-v1"},
+            expected_layout_revision="mixed-ui",
+            run_id="run-mixed-ui",
+        )
+        segs = mixed_run["trajectory"]["segments"]
+        print("mixed segments", len(segs), "cards", list(mixed_run["cards"]))
+        posed = [seg for seg in segs if seg.get("fromPose") and seg.get("toPose") and seg.get("resourceId")]
+        check(mixed_run["kpiFromUiDemo"] is False and len(posed) > 0, "mixed run emits resource trajectory segments")
+        check("value" not in mixed_run["cards"]["utilization"], "mixed utilization stays split")
+
     print("\n=== 07 AC not claimed by this slice ===")
     for ac in (
         "AC-02",
@@ -441,7 +496,7 @@ def main() -> int:
         "AC-21",
         "AC-17 转向和单向",
         "AC-19 改价格",
-        "AC-20 轨迹动画",
+        "AC-20 历史布局回放绑定（决策页会插值本次 trajectory.segments，不把该动画当成 AC-20 已验收）",
         "AC-22 断网",
         "易用性 5 人小样",
     ):

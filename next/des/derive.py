@@ -12,22 +12,60 @@ MAX_ACCESS_M = 8.0
 
 FOOTPRINTS: Dict[str, Dict[str, float]] = {
     "ST-PAL-01": {"w": 2.7, "d": 1.2},
+    "ST-FLOOR-01": {"w": 4.8, "d": 2.4},
     "IN-DOCK-01": {"w": 3.0, "d": 4.0},
     "OUT-DOCK-01": {"w": 3.0, "d": 4.0},
-}
-
-FORMAL_PREFIX = {
-    "ST-": "slot",
-    "IN-": "dock",
-    "OUT-": "dock",
+    "PK-DEPAL-01": {"w": 3.2, "d": 2.0},
+    "PK-PUT-EACH-01": {"w": 4.2, "d": 1.0},
+    "OUT-PACK-01": {"w": 2.4, "d": 1.4},
+    "MH-HAND-01": {"w": 6.0, "d": 1.2},
+    "MH-FORK-01": {"w": 4.0, "d": 2.2},
+    "AUX-FIRE-01": {"w": 6.0, "d": 1.5},
+    "AUX-WALL-01": {"w": 8.0, "d": 0.3},
 }
 
 
 def kind_for(type_element_id: str) -> str:
-    for prefix, kind in FORMAL_PREFIX.items():
-        if type_element_id.startswith(prefix):
-            return kind
+    """Docks are only the dock types. OUT-PACK is a station, not a second ship door."""
+    if type_element_id.startswith("ST-"):
+        return "slot"
+    if type_element_id.startswith("IN-DOCK") or type_element_id.startswith("OUT-DOCK"):
+        return "dock"
+    if type_element_id.startswith("PK-") or type_element_id.startswith("OUT-PACK"):
+        return "station"
     return "device"
+
+
+def _footprint_for(type_element_id: str, params: Dict[str, Any]) -> Dict[str, float]:
+    geom = params.get("geometry") if isinstance(params.get("geometry"), dict) else {}
+    length = params.get("length_m", geom.get("length_m") if isinstance(geom, dict) else None)
+    width = params.get("width_m", geom.get("width_m") if isinstance(geom, dict) else None)
+    if length is not None and width is not None:
+        return {"w": float(length), "d": float(width)}
+    if "footprintW" in params and "footprintD" in params:
+        return {"w": float(params["footprintW"]), "d": float(params["footprintD"])}
+    return dict(FOOTPRINTS.get(type_element_id, {"w": 1.0, "d": 1.0}))
+
+
+def _preset_access(
+    params: Dict[str, Any],
+    pose: Point,
+    obstacles: List[List[Point]],
+) -> Optional[Tuple[float, float, str]]:
+    point = params.get("accessPoint")
+    preset_id = params.get("accessNodeId")
+    if not isinstance(point, dict) or not isinstance(preset_id, str) or not preset_id:
+        return None
+    try:
+        ax = float(point["x"])
+        ay = float(point["y"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if dist(pose, (ax, ay)) > MAX_ACCESS_M + 1e-6:
+        return None
+    if segment_blocked(pose, (ax, ay), obstacles):
+        return None
+    return ax, ay, preset_id
 
 
 def obstacle_rings(facility: Dict[str, Any]) -> List[List[Point]]:
@@ -199,13 +237,16 @@ def derive_snapshot(
         px, py = float(pose.get("x", 0)), float(pose.get("y", 0))
         yaw = float(pose.get("yawDeg") or 0)
         params = el.get("params") or {}
-        if "footprintW" in params and "footprintD" in params:
-            fp = {"w": float(params["footprintW"]), "d": float(params["footprintD"])}
-        else:
-            fp = dict(FOOTPRINTS.get(tid, {"w": 1.0, "d": 1.0}))
+        fp = _footprint_for(tid, params)
         access = None
         blocked_near = False
-        if kind in {"slot", "dock", "device", "station"}:
+        preset = _preset_access(params, (px, py), obstacles) if kind in {"slot", "dock", "device", "station"} else None
+        if preset is not None:
+            ax, ay, preset_id = preset
+            new_id = ensure_node(ax, ay, preset_id)
+            _split_edge_at(edges, node_pose(), (ax, ay), new_id, obstacles)
+            access = new_id
+        elif kind in {"slot", "dock", "device", "station"}:
             best: Optional[Point] = None
             best_d = 1e18
             for aisle in layout_doc.get("aisles") or []:

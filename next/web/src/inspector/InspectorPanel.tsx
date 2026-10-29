@@ -1,5 +1,6 @@
 import { copy } from "../copy";
-import type { Draft, ScenarioFields } from "../workbench/draft";
+import { SPEC_PACKS, type NormFinding, type NormPhase, type SpecPackId } from "../prepare/norms";
+import type { Draft, PoseEl, ScenarioFields } from "../workbench/draft";
 import { parseNum } from "../workbench/draft";
 
 type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?: string };
@@ -7,12 +8,8 @@ type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?:
 type Props = {
   draft: Draft;
   onDraft: (patch: Partial<Draft>) => void;
-  selectedCaption: string;
-  selectedId: string | null;
-  selectedType: string | null;
-  x: string;
-  y: string;
-  onPose: (axis: "x" | "y", value: string) => void;
+  selected: PoseEl | null;
+  onElement: (patch: Partial<PoseEl>) => void;
   fields: ScenarioFields;
   onField: (patch: Partial<ScenarioFields>) => void;
   onTestValues: () => void;
@@ -20,17 +17,21 @@ type Props = {
   checks: Check[];
   prepareReady: boolean | null;
   onRecheck: () => void;
+  normPhase: NormPhase;
+  normSummary: string;
+  normNote: string;
+  specOn: Record<SpecPackId, boolean>;
+  findings: NormFinding[];
+  onToggleSpec: (id: SpecPackId, checked: boolean) => void;
+  onAudit: () => void;
+  onFix: (finding: NormFinding) => void;
 };
 
 export function InspectorPanel({
   draft,
   onDraft,
-  selectedCaption,
-  selectedId,
-  selectedType,
-  x,
-  y,
-  onPose,
+  selected,
+  onElement,
   fields,
   onField,
   onTestValues,
@@ -38,13 +39,21 @@ export function InspectorPanel({
   checks,
   prepareReady,
   onRecheck,
+  normPhase,
+  normSummary,
+  normNote,
+  specOn,
+  findings,
+  onToggleSpec,
+  onAudit,
+  onFix,
 }: Props) {
   const fails = checks.filter((check) => check.status === "fail");
   return (
     <>
       <div className="inspector-head">
         <div className="section-title">参数与校核</div>
-        <div className="section-sub">{selectedCaption}</div>
+        <div className="section-sub">{selected ? `${selected.typeElementId} · ${selected.instanceId}` : "当前未选中设备"}</div>
       </div>
       <div className="inspector-scroll" id="inspectorScroll">
         <section className="panel-section">
@@ -68,29 +77,69 @@ export function InspectorPanel({
         <section className="panel-section">
           <div className="panel-row">
             <h3>实例参数</h3>
-            <span className="mini-tag">{selectedType ?? "未选择"}</span>
+            <span className="mini-tag">{selected?.typeElementId ?? "未选择"}</span>
           </div>
-          {selectedId ? (
+          {selected ? (
             <>
               <div className="field">
                 <label>实例 ID</label>
                 <div className="input-row">
-                  <input value={selectedId} readOnly />
+                  <input value={selected.instanceId} readOnly />
                 </div>
               </div>
               <div className="two-fields">
-                <NumberField label="东向 X" unit="m" value={x} onChange={(value) => onPose("x", value)} />
-                <NumberField label="北向 Y" unit="m" value={y} onChange={(value) => onPose("y", value)} />
+                <NumberField label="东向 X" unit="m" value={String(selected.x)} onChange={(value) => onElement({ x: parseNum(value) ?? selected.x })} />
+                <NumberField label="北向 Y" unit="m" value={String(selected.y)} onChange={(value) => onElement({ y: parseNum(value) ?? selected.y })} />
               </div>
+              <div className="two-fields">
+                <NumberField label="长度" unit="m" value={String(selected.lengthM)} onChange={(value) => onElement({ lengthM: parseNum(value) ?? selected.lengthM })} />
+                <NumberField label="宽度" unit="m" value={String(selected.widthM)} onChange={(value) => onElement({ widthM: parseNum(value) ?? selected.widthM })} />
+              </div>
+              <div className="two-fields">
+                <NumberField label="高度" unit="m" value={String(selected.heightM)} onChange={(value) => onElement({ heightM: parseNum(value) ?? selected.heightM })} />
+                <NumberField
+                  label="朝向"
+                  unit="°"
+                  value={String(selected.yawDeg)}
+                  onChange={(value) => onElement({ yawDeg: parseNum(value) ?? selected.yawDeg })}
+                />
+              </div>
+              {selected.typeElementId === "ST-PAL-01" ? (
+                <div className="two-fields">
+                  <NumberField
+                    label="列数"
+                    unit="列"
+                    value={String(selected.bays ?? 1)}
+                    onChange={(value) => {
+                      const bays = parseNum(value);
+                      if (bays === null || bays < 1) return;
+                      onElement({ bays, lengthM: 2.7 * bays });
+                    }}
+                  />
+                  <NumberField
+                    label="层数"
+                    unit="层"
+                    value={String(selected.levels ?? 1)}
+                    onChange={(value) => {
+                      const levels = parseNum(value);
+                      if (levels === null || levels < 1) return;
+                      onElement({ levels, heightM: 1.5 * levels });
+                    }}
+                  />
+                </div>
+              ) : null}
               <div className="field">
-                <label>类型</label>
+                <label>接入点</label>
                 <div className="input-row">
-                  <input value={selectedType ?? ""} readOnly />
+                  <input value={selected.accessNodeId ?? "未绑定"} readOnly />
                 </div>
               </div>
+              <button className="text-link" type="button" onClick={() => onElement({ yawDeg: (selected.yawDeg + 90) % 360 })}>
+                旋转 90°
+              </button>
             </>
           ) : (
-            <div className="inspector-empty">在画布中选择设备，用米制坐标修改位置。</div>
+            <div className="inspector-empty">拖入或点选设备。占地由长度、宽度和朝向决定，单位是米。</div>
           )}
         </section>
         <section className="panel-section">
@@ -171,32 +220,99 @@ export function InspectorPanel({
           />
         </section>
         <section className="panel-section">
-          <div className="panel-row">
-            <h3>约束与规范</h3>
-            <span className={`mini-tag${prepareReady === false ? " amber" : ""}`}>
-              {prepareReady === null ? "未准备" : prepareReady ? "已通过" : "未通过"}
-            </span>
-          </div>
-          {fails.length === 0 ? (
-            <div className="constraint">
-              <span>
-                <strong>{prepareReady ? "当前准备已通过" : "尚未做权威校验"}</strong>
-                碰撞、窄通道和跨墙由准备任务判定。
+          <details open>
+            <summary className="panel-row fold-summary">
+              <h3>约束与规范</h3>
+              <span className={`mini-tag${normPhase === "fail" ? " red" : normPhase === "stale" || prepareReady === false ? " amber" : ""}`}>
+                {normPhase === "fail" ? "硬冲突" : normPhase === "stale" ? "未校核" : prepareReady === null ? "未准备" : prepareReady ? "已通过" : "未通过"}
               </span>
-            </div>
-          ) : (
-            fails.map((check, index) => (
-              <div className="constraint error" key={index}>
+            </summary>
+            <p className="norm-summary">{normSummary}</p>
+            <p className="norm-note">{normNote}</p>
+            {SPEC_PACKS.map((pack) => (
+              <label className="toggle-line" key={pack.id}>
                 <span>
-                  <strong>{check.ruleId}</strong>
-                  {check.message} {(check.objectIds ?? []).join("、")}
+                  <input
+                    type="checkbox"
+                    data-pack={pack.id}
+                    checked={specOn[pack.id]}
+                    onChange={(event) => onToggleSpec(pack.id, event.target.checked)}
+                  />
+                  {pack.name}
+                </span>
+                <em className="pack-hint">{pack.hint}</em>
+              </label>
+            ))}
+            <label className="toggle-line">
+              <span>
+                <input type="checkbox" disabled checked={false} aria-label="空槽" />
+                空槽 · 可扩展规范包
+              </span>
+              <em className="pack-hint">未接入</em>
+            </label>
+            <button className="norm-btn" id="normAudit" type="button" onClick={onAudit}>
+              按规范校核
+            </button>
+            {normPhase === "stale" ? (
+              <div className="constraint warn">
+                <span>
+                  <strong>已选规范还没校核</strong>
+                  不能推演。点「按规范校核」，或取消勾选回到仅几何硬约束。
                 </span>
               </div>
-            ))
-          )}
-          <button className="text-link" type="button" onClick={onRecheck}>
-            重新校核
-          </button>
+            ) : null}
+            {normPhase === "off" ? (
+              <div className="constraint">
+                <span>
+                  <strong>未选，仅几何硬约束</strong>
+                  碰撞、超区、通道净宽和压柱仍会拒绝放下。
+                </span>
+              </div>
+            ) : null}
+            {normPhase === "pass" ? (
+              <div className="constraint">
+                <span>
+                  <strong>校核没有硬冲突</strong>
+                  可以进入推演。几何准备仍要单独通过。
+                </span>
+              </div>
+            ) : null}
+            {findings.map((finding) => (
+              <div className="constraint error" key={finding.id}>
+                <span>
+                  <strong>{finding.title}</strong>
+                  {finding.message}
+                  {finding.repair ? (
+                    <button className="text-link" type="button" onClick={() => onFix(finding)}>
+                      {finding.fixLabel}
+                    </button>
+                  ) : (
+                    <em className="pack-hint">请手动挪开。</em>
+                  )}
+                </span>
+              </div>
+            ))}
+            {fails.length === 0 ? (
+              <div className="constraint">
+                <span>
+                  <strong>{prepareReady ? "当前准备已通过" : "尚未做权威校验"}</strong>
+                  碰撞、窄通道和跨墙由准备任务判定。
+                </span>
+              </div>
+            ) : (
+              fails.map((check, index) => (
+                <div className="constraint error" key={`prep-${index}`}>
+                  <span>
+                    <strong>{check.ruleId}</strong>
+                    {check.message} {(check.objectIds ?? []).join("、")}
+                  </span>
+                </div>
+              ))
+            )}
+            <button className="text-link" type="button" onClick={onRecheck}>
+              重新校核
+            </button>
+          </details>
         </section>
       </div>
     </>
