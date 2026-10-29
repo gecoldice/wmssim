@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/operating-profile-revision.json",
+  "title": "OperatingProfileRevision v0.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "id",
+    "revision",
+    "resourcePools",
+    "serviceParameters",
+    "routingPolicy",
+    "shiftWindow"
+  ],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "minLength": 1 },
+    "parentRef": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "resourcePools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "resourceType", "count", "capabilityRef", "availableWindowSec"],
+        "properties": {
+          "id": { "type": "string" },
+          "resourceType": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 },
+          "capabilityRef": { "type": "string" },
+          "availableWindowSec": { "type": "number", "exclusiveMinimum": 0 },
+          "homeInstanceIds": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "skillTags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "MVP 忽略并告警；调度仍 FIFO+空闲最久"
+          }
+        }
+      }
+    },
+    "serviceParameters": { "type": "object", "additionalProperties": true },
+    "routingPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "enum": ["shortest_path"] }
+      }
+    },
+    "shiftWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startSec", "endSec"],
+      "properties": {
+        "startSec": { "type": "number", "minimum": 0 },
+        "endSec": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "shiftSchedule": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "MVP 忽略并告警"
+    },
+    "faults": {
+      "type": "array",
+      "description": "faultInject 契约占位；enabled=true 时引擎忽略并告警",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "faultType": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "startTime": { "type": "number" },
+          "duration": { "type": "number" }
+        }
+      }
+    }
+  }
+}

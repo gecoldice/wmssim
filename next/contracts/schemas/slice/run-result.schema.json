@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/slice/run-result.json",
+  "title": "Manual slice run result",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contractVersion",
+    "engineVersion",
+    "metricDefinitionVersion",
+    "kpiFromUiDemo",
+    "runId",
+    "layoutRevision",
+    "cards",
+    "secondary",
+    "events",
+    "trajectory",
+    "inventoryConservation"
+  ],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "engineVersion": { "type": "string", "minLength": 1 },
+    "metricDefinitionVersion": { "type": "string", "minLength": 1 },
+    "kpiFromUiDemo": { "const": false },
+    "runId": { "type": "string", "minLength": 1 },
+    "layoutRevision": { "type": "string", "minLength": 1 },
+    "cards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["throughput", "wait", "utilization", "bottleneck"],
+      "properties": {
+        "throughput": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["value", "unit", "outboundPalletEq", "horizonSec"],
+          "properties": {
+            "value": { "type": ["number", "null"] },
+            "unit": { "const": "palletEq/h" },
+            "outboundPalletEq": { "type": "number" },
+            "horizonSec": { "type": "number" }
+          }
+        },
+        "wait": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["meanSec", "p95Sec", "sampleCount", "unit"],
+          "properties": {
+            "meanSec": { "type": ["number", "null"] },
+            "p95Sec": { "type": ["number", "null"] },
+            "sampleCount": { "type": "integer", "minimum": 0 },
+            "unit": { "const": "s" }
+          }
+        },
+        "utilization": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["byResourceType", "byResource", "unit", "definition"],
+          "properties": {
+            "byResourceType": { "type": "array" },
+            "byResource": { "type": "array" },
+            "unit": { "const": "ratio" },
+            "definition": { "type": "string" }
+          }
+        },
+        "bottleneck": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["topN", "definition"],
+          "properties": {
+            "topN": { "type": "array" },
+            "definition": { "type": "string" }
+          }
+        }
+      }
+    },
+    "secondary": {
+      "type": "object",
+      "required": ["completedTasks", "incompleteTasks", "completionRate"],
+      "properties": {
+        "completedTasks": { "type": "integer" },
+        "incompleteTasks": { "type": "integer" },
+        "completionRate": { "type": ["number", "null"] }
+      }
+    }
+  }
+}

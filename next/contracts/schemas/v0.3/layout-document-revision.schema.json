@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/layout-document-revision.json",
+  "title": "LayoutDocumentRevision v0.3",
+  "description": "编辑器真相。无日出库量。派生布局快照仍为 Snapshot 0.2。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "id",
+    "revision",
+    "facilityRef",
+    "elements",
+    "aisles",
+    "locks",
+    "catalogVersion"
+  ],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "minLength": 1 },
+    "facilityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "parentRef": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "elements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["instanceId", "typeElementId", "pose", "params", "assetDisposition"],
+        "properties": {
+          "instanceId": { "type": "string", "minLength": 1 },
+          "typeElementId": {
+            "type": "string",
+            "pattern": "^[A-Z]+(-[A-Z]+)+-[0-9]{2}$"
+          },
+          "pose": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x", "y"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "yawDeg": { "type": "number" }
+            }
+          },
+          "params": { "type": "object", "additionalProperties": true },
+          "assetDisposition": {
+            "type": "string",
+            "enum": ["existing", "new", "relocated", "removed"]
+          }
+        }
+      }
+    },
+    "aisles": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": true }
+    },
+    "locks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["instanceId", "fields"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "fields": {
+            "oneOf": [
+              { "const": "all" },
+              {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "catalogVersion": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,0 +1,183 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/facility-revision.json",
+  "title": "FacilityRevision v0.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "id",
+    "revision",
+    "coord",
+    "boundary",
+    "obstacles",
+    "openings",
+    "reservedAreas",
+    "heightProfile",
+    "evidence"
+  ],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "minLength": 1 },
+    "parentRef": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "coord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "xAxis", "yAxis", "unit"],
+      "properties": {
+        "origin": { "const": "facility_sw_corner" },
+        "xAxis": { "const": "east" },
+        "yAxis": { "const": "north" },
+        "unit": { "const": "m" }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outer"],
+      "properties": {
+        "outer": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "required": ["x", "y"],
+            "additionalProperties": false,
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            }
+          }
+        },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 3,
+            "items": {
+              "type": "object",
+              "required": ["x", "y"],
+              "additionalProperties": false,
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "obstacles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "polygon", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "polygon": {
+            "type": "object",
+            "required": ["outer"],
+            "additionalProperties": false,
+            "properties": {
+              "outer": {
+                "type": "array",
+                "minItems": 3,
+                "items": {
+                  "type": "object",
+                  "required": ["x", "y"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "x": { "type": "number" },
+                    "y": { "type": "number" }
+                  }
+                }
+              }
+            }
+          },
+          "heightM": { "type": ["number", "null"], "minimum": 0 },
+          "evidence": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "openings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "segment", "widthM", "role", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "segment": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["x", "y"],
+              "additionalProperties": false,
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" }
+              }
+            }
+          },
+          "widthM": { "type": "number", "exclusiveMinimum": 0 },
+          "heightM": { "type": ["number", "null"], "minimum": 0 },
+          "role": {
+            "type": "string",
+            "enum": ["recv", "ship", "shared", "person", "other"]
+          },
+          "approachPolygon": { "type": ["object", "null"], "additionalProperties": true },
+          "evidence": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "reservedAreas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "polygon", "purpose", "keepClear", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "polygon": { "type": "object", "additionalProperties": true },
+          "purpose": { "type": "string" },
+          "keepClear": { "type": "boolean" },
+          "evidence": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "heightProfile": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "heightM"],
+          "properties": {
+            "kind": { "const": "uniform" },
+            "heightM": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "const": "zoned" }
+          }
+        }
+      ]
+    },
+    "evidence": { "type": "object", "additionalProperties": true }
+  }
+}
