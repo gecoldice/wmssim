@@ -1,0 +1,52 @@
+{
+  "contractVersion": "0.3",
+  "id": "layout-doc-m2-base",
+  "revision": "ld-m2-base",
+  "facilityRef": { "id": "facility-fx01", "revision": "f-r1" },
+  "parentRef": null,
+  "elements": [
+    {
+      "instanceId": "dock-recv-locked",
+      "typeElementId": "IN-DOCK-01",
+      "pose": { "x": 1.5, "y": 12, "yawDeg": 0 },
+      "params": {},
+      "assetDisposition": "existing"
+    },
+    {
+      "instanceId": "dock-ship-locked",
+      "typeElementId": "OUT-DOCK-01",
+      "pose": { "x": 38.5, "y": 12, "yawDeg": 180 },
+      "params": {},
+      "assetDisposition": "existing"
+    },
+    {
+      "instanceId": "rack-keep-outside",
+      "typeElementId": "ST-PAL-01",
+      "pose": { "x": 8, "y": 4, "yawDeg": 0 },
+      "params": {
+        "levels": 4,
+        "bays": 1,
+        "palletsPerBay": 2,
+        "minClearWidthM": 3.5,
+        "footprintW": 2.7,
+        "footprintD": 1.2
+      },
+      "assetDisposition": "existing"
+    }
+  ],
+  "aisles": [
+    {
+      "id": "aisle-main",
+      "centerline": [
+        { "x": 2, "y": 12 },
+        { "x": 38, "y": 12 }
+      ],
+      "widthM": 3.5
+    }
+  ],
+  "locks": [
+    { "instanceId": "dock-recv-locked", "fields": "all" },
+    { "instanceId": "dock-ship-locked", "fields": "all" }
+  ],
+  "catalogVersion": "catalog-mvp@c-r1"
+}

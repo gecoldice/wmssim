@@ -1,4 +1,4 @@
-"""Worker entrypoint — M1 可被 API 同进程调用派生/校验；无 DES/规划。"""
+"""Worker entrypoint — M2：规划基线可被 API 同进程调用；无 DES。"""
 
 from __future__ import annotations
 
@@ -17,22 +17,25 @@ def main() -> int:
         "role": "compute-worker",
         "status": "idle",
         "contractVersion": "0.3",
-        "milestone": "M1",
+        "milestone": "M2",
         "capabilities": {
             "geometry": "aabb+segment",
             "derive": True,
             "validate": True,
-            "planning": False,
+            "planning": True,
+            "planningScope": "DEC-05 ambient single-floor axis-aligned + ST-PAL-01",
+            "evaluationLevel": ["quick"],
             "des": False,
             "kpiFromUiDemo": False,
+            "claimsOperationalEfficiency": False,
         },
         "contracts": str(ROOT / "contracts"),
         "fixtures": str(ROOT / "fixtures"),
-        "message": "M1: derive/validate available via API prepare-jobs; no DES/planning",
+        "message": "M2: planning baseline via API /planning-jobs; quick geo/path only; no DES",
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     if not args.ping:
-        print("No job loop; use API /layouts/{id}/prepare-jobs for M1.")
+        print("No job loop; use API /planning-jobs and /layouts/{id}/prepare-jobs.")
     return 0
 
 

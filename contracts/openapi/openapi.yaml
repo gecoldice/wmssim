@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: simapp API
-  version: 0.3.1
+  version: 0.3.2
   description: |
     仓库布局规划与运营推演应用 API。
     外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
-    M1：项目/工作台/layoutRevision、派生与权威校验、推演准备状态。
-    手动路径独立可用；不含自动规划 / DES。
+    M2：场地确认、PlanningJob、基线规划（DEC-05）、候选采用/局部重排；
+    M1 手动路径仍独立；quick 评估不宣称运营效率；无 DES。
 servers:
   - url: http://127.0.0.1:8000/api/v1
     description: local
@@ -14,6 +14,7 @@ tags:
   - name: health
   - name: projects
   - name: layouts
+  - name: planning
   - name: jobs
 paths:
   /health:
@@ -159,6 +160,86 @@ paths:
       responses:
         "200":
           description: prepare payload including simulationReady
+  /projects/{projectId}/drawings:
+    post:
+      tags: [projects]
+      summary: Register drawing metadata (upload ≠ confirm)
+      operationId: putDrawing
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "201":
+          description: drawing registered; calibrated only with scale meta
+  /projects/{projectId}/planning-drafts:
+    post:
+      tags: [planning]
+      summary: Save planning wizard draft
+      operationId: savePlanningDraft
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "201":
+          description: draft saved; disabledGoals listed when data missing
+  /demands:
+    post:
+      tags: [projects]
+      summary: Save demand revision
+      operationId: putDemand
+      responses:
+        "201":
+          description: demand saved
+  /planning-jobs:
+    post:
+      tags: [planning]
+      summary: Submit PlanningRequest (M2 sync baseline search)
+      operationId: createPlanningJob
+      responses:
+        "202":
+          description: job + candidate summaries; quick ≠ operational efficiency
+  /planning-jobs/{jobId}/candidates:
+    get:
+      tags: [planning]
+      summary: List planning candidates
+      operationId: listPlanningCandidates
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: candidate summaries
+  /candidates/{candidateId}:
+    get:
+      tags: [planning]
+      summary: Get full candidate including editable layoutDocument
+      operationId: getCandidate
+      parameters:
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: candidate detail
+  /candidates/{candidateId}/adoptions:
+    post:
+      tags: [planning]
+      summary: Adopt candidate as new variant branch
+      operationId: adoptCandidate
+      parameters:
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: new variant + layout; does not overwrite working copy
+        "409":
+          description: REVISION_CONFLICT
   /jobs/{jobId}:
     get:
       tags: [jobs]
@@ -173,6 +254,20 @@ paths:
       responses:
         "200":
           description: job status
+  /jobs/{jobId}/cancel:
+    post:
+      tags: [jobs]
+      summary: Request job cancellation
+      operationId: cancelJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: latest job state
 components:
   parameters:
     projectId:

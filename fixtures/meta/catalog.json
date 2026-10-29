@@ -4,7 +4,8 @@
     "合成数字仅用于契约/结构测试，不进入客户项目默认值。",
     "金样 KPI 待 DES 引擎实现后独立核对；本目录不含猜测 KPI 期望值。",
     "正例 expect=pass；反例 expect=fail 并声明失败原因类别。",
-    "M1 派生/碰撞/窄通道/跨墙语义见 scripts/run_m1_checks.py（prepareExpect）。"
+    "M1 派生/碰撞/窄通道/跨墙语义见 scripts/run_m1_checks.py（prepareExpect）。",
+    "M2 规划/锁定/采用语义见 scripts/run_m2_checks.py。"
   ],
   "entries": [
     {
@@ -179,6 +180,22 @@
       "prepareExpect": "fail",
       "reasonCode": "NO_ACCESS_NODE",
       "purpose": "强制跨墙 accessNode 的 snapshot；权威校验拒绝"
+    },
+    {
+      "id": "FX-M2-PENDING",
+      "path": "invalid/fx-m2-unconfirmed-facility.json",
+      "kind": "facilityRevision",
+      "schema": "v0.3/facility-revision.schema.json",
+      "expect": "pass",
+      "purpose": "未确认场地；不得产出 validated 规划候选（门禁 INPUT_UNCONFIRMED）"
+    },
+    {
+      "id": "FX-M2-LOCKED-BASE",
+      "path": "valid/fx-m2-base-layout-locked.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "purpose": "局部重排底稿：锁定 dock + 区域外货架"
     }
   ]
 }
