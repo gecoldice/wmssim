@@ -1,0 +1,72 @@
+{
+  "schema_version": "0.2",
+  "element_id": "OUT-FULL-01",
+  "element_type": "StagingShip",
+  "display_name": "整托集货",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 2.5,
+    "aabb": {
+      "length_m": 4.8,
+      "width_m": 1.3
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "pallet_in",
+      "role": "in",
+      "x_m": 0,
+      "y_m": 0.15,
+      "z_m": -2.4,
+      "normal_deg": 180,
+      "family": "pallet"
+    },
+    {
+      "id": "pallet_out",
+      "role": "out",
+      "x_m": 0,
+      "y_m": 0.15,
+      "z_m": 2.4,
+      "normal_deg": 0,
+      "family": "pallet"
+    }
+  ],
+  "connector_ids": [
+    "pallet_in",
+    "pallet_out"
+  ],
+  "params": {
+    "geometry": {
+      "bay_count": 4,
+      "bay_w_m": 1.3,
+      "bay_d_m": 1.2,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "pallet_slots": 4,
+      "orders_per_bay": 1
+    },
+    "rules": {
+      "ship_wave": "full_pallet"
+    },
+    "interface": {
+      "dock_assign": "OUT-DOCK-01"
+    }
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "OUT-FULL-01",
+    "flows": [
+      "pallet_full"
+    ],
+    "notes": "proxy only · bay_count primary · no bay_m2 · no GLB",
+    "proxy": true
+  }
+}

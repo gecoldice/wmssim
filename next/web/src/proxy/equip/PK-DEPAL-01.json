@@ -1,0 +1,72 @@
+{
+  "schema_version": "0.2",
+  "element_id": "PK-DEPAL-01",
+  "element_type": "DecantStation",
+  "display_name": "拆托工位",
+  "glb": "",
+  "lod": { "lod1": "proxy:box" },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 2.2,
+    "aabb": { "length_m": 3.2, "width_m": 2.0 }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "pallet_in",
+      "role": "in",
+      "x_m": 0,
+      "y_m": 0.15,
+      "z_m": -1.6,
+      "normal_deg": 180,
+      "family": "pallet"
+    },
+    {
+      "id": "case_out",
+      "role": "out",
+      "x_m": 0,
+      "y_m": 0.9,
+      "z_m": 1.6,
+      "normal_deg": 0,
+      "family": "tote"
+    },
+    {
+      "id": "empty_pallet_out",
+      "role": "out",
+      "x_m": 1.0,
+      "y_m": 0.15,
+      "z_m": 0,
+      "normal_deg": 90,
+      "family": "pallet"
+    }
+  ],
+  "connector_ids": ["pallet_in", "case_out", "empty_pallet_out"],
+  "params": {
+    "geometry": {
+      "length_m": 3.2,
+      "width_m": 2.0,
+      "height_m": 1.6,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "decants_per_hour": 20,
+      "cases_per_pallet": 24
+    },
+    "rules": {
+      "empty_pallet_policy": "to_aux_empty",
+      "scan_required": true
+    },
+    "interface": {
+      "pallet_in_port": "pallet_in",
+      "case_out_port": "case_out",
+      "empty_pallet_out_port": "empty_pallet_out"
+    }
+  },
+  "visual": { "proxy": "box" },
+  "meta": {
+    "element_library_id": "PK-DEPAL-01",
+    "flows": ["decant"],
+    "notes": "proxy only · slice11 placeable 3.2×2×1.6 · no GLB",
+    "proxy": true
+  }
+}

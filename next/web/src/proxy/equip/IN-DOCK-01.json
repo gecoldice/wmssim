@@ -1,0 +1,86 @@
+{
+  "schema_version": "0.2",
+  "element_id": "IN-DOCK-01",
+  "element_type": "Dock",
+  "display_name": "入库月台",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 4.5,
+    "aabb": {
+      "length_m": 4,
+      "width_m": 3.5
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "truck_approach",
+      "role": "in",
+      "x_m": 0,
+      "y_m": 1.2,
+      "z_m": -2,
+      "normal_deg": 180,
+      "family": "vehicle"
+    },
+    {
+      "id": "pallet_exit",
+      "role": "out",
+      "x_m": 0,
+      "y_m": 0.15,
+      "z_m": 2,
+      "normal_deg": 0,
+      "family": "pallet"
+    }
+  ],
+  "connector_ids": [
+    "truck_approach",
+    "pallet_exit"
+  ],
+  "params": {
+    "geometry": {
+      "length_m": 4,
+      "width_m": 3.5,
+      "dock_height_m": 1.2,
+      "approach_angle_deg": 90,
+      "door_count": 1,
+      "orientation_deg": 0,
+      "height_m": 4.5
+    },
+    "capability": {
+      "vehicles_per_hour": 8,
+      "max_truck_length_m": 13
+    },
+    "rules": {
+      "open_hours": "06:00-22:00",
+      "allowed_vehicle_types": [
+        "box_truck",
+        "trailer"
+      ]
+    },
+    "interface": {
+      "queue_capacity": 2,
+      "failure_rate": 0.01
+    }
+  },
+  "soft_margin": {
+    "front_m": 1,
+    "back_m": 2,
+    "left_m": 0.3,
+    "right_m": 0.3
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "IN-DOCK-01",
+    "flows": [
+      "pallet_full"
+    ],
+    "notes": "proxy only · dock platform + door recess · no GLB",
+    "proxy": true
+  }
+}

@@ -30,9 +30,9 @@ export function LibraryPanel({ dragging, query, filter, onQuery, onFilter, onLoc
         />
       </div>
       <div className="tabs">
-        {(["all", "storage", "dock", "station", "structure"] as const).map((key) => (
+        {(["all", ...groupLabels.map((row) => row[0])] as const).map((key) => (
           <button key={key} className={filter === key ? "active" : ""} type="button" onClick={() => onFilter(key)}>
-            {key === "all" ? "全部" : groupLabels.find((row) => row[0] === key)?.[1].slice(0, 2)}
+            {key === "all" ? "全部" : groupLabels.find((row) => row[0] === key)?.[1]}
           </button>
         ))}
       </div>
@@ -73,7 +73,7 @@ export function LibraryPanel({ dragging, query, filter, onQuery, onFilter, onLoc
                       onDragEnd(item.id, event.clientX, event.clientY);
                     }}
                   >
-                    <span className={`catalog-icon${group === "station" ? " orange" : group === "dock" ? " blue" : ""}`}>
+                    <span className={`catalog-icon${group === "PK" || group === "OUT" ? " orange" : group === "IN" ? " blue" : ""}`}>
                       <i
                         className="foot-preview"
                         style={{ width: Math.max(6, item.lengthM * preview), height: Math.max(4, item.widthM * preview) }}

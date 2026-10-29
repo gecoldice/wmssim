@@ -1,0 +1,155 @@
+{
+  "fixtureId": "G-BREAK-04",
+  "title": "拆托站 capacitySlots=1，两托串行排队",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "工程实测通过（next/scripts/run_gold.py）。仅本夹具。拆托金样过 ≠ 综合仓三流 D1 全过。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_break_04",
+    "layoutRevision": "break_rev_g04",
+    "coord": {
+      "origin": "SW",
+      "unit": "m"
+    },
+    "elements": [
+      {
+        "elementId": "N_bulk",
+        "kind": "node",
+        "pose": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "N_break",
+        "kind": "node",
+        "pose": {
+          "x": 15,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "SLOT_BULK",
+        "kind": "slot",
+        "pose": {
+          "x": 0,
+          "y": 2
+        },
+        "accessNodeId": "N_bulk",
+        "capacityPallets": 4,
+        "labels": [
+          "bulk"
+        ],
+        "footprint": {
+          "w": 1.2,
+          "d": 1.0
+        }
+      },
+      {
+        "elementId": "ST_BREAK",
+        "kind": "station",
+        "pose": {
+          "x": 15,
+          "y": 2
+        },
+        "accessNodeId": "N_break",
+        "labels": [
+          "break_bulk"
+        ],
+        "capacitySlots": 1,
+        "footprint": {
+          "w": 3,
+          "d": 2
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_bulk_break",
+        "from": "N_bulk",
+        "to": "N_break",
+        "lengthM": 15,
+        "bidirectional": true,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ],
+    "defaults": {
+      "processSec": {
+        "break_bulk": 180
+      }
+    }
+  },
+  "scenario": {
+    "expectedLayoutRevision": "break_rev_g04",
+    "horizonSec": 2400,
+    "seed": 204,
+    "casesPerPallet": 24,
+    "downstreamPiecePick": false,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_bulk",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.2
+      },
+      {
+        "resourceId": "FL2",
+        "kind": "forklift",
+        "homeNodeId": "N_bulk",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.2
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "TB1",
+        "flowKind": "break_bulk",
+        "qtyPallets": 1,
+        "originId": "SLOT_BULK",
+        "destId": "ST_BREAK",
+        "readyAt": 0
+      },
+      {
+        "taskId": "TB2",
+        "flowKind": "break_bulk",
+        "qtyPallets": 1,
+        "originId": "SLOT_BULK",
+        "destId": "ST_BREAK",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": {
+      "SLOT_BULK": {
+        "pallets": 2
+      }
+    }
+  },
+  "expected": {
+    "mustReject": false,
+    "taskStatus": {
+      "TB1": "done",
+      "TB2": "done"
+    },
+    "stationSerialize": {
+      "stationId": "ST_BREAK",
+      "assert": "两托 process 时间窗不重叠；后者 stationWaitSec > 0 或 start ≥ 前者 end"
+    },
+    "conservation": {
+      "palletsDelta": {
+        "SLOT_BULK": -2
+      },
+      "casesCreated": 48
+    },
+    "kpiHonesty": "站槽串行通 ≠ 边拥堵 / 小件 / D1 全过"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "d1AllFlows": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

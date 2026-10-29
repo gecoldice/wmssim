@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.2",
+  "element_id": "MH-FORK-01",
+  "element_type": "AisleSegment",
+  "display_name": "叉车作业区",
+  "glb": "",
+  "lod": { "lod1": "proxy:box" },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 3.5,
+    "aabb": { "length_m": 4.0, "width_m": 2.2 }
+  },
+  "colliders": [],
+  "ports": [],
+  "connector_ids": [],
+  "params": {
+    "geometry": {
+      "length_m": 4.0,
+      "width_m": 2.2,
+      "orientation_deg": 0,
+      "aisle_w_m": 2.2
+    },
+    "capability": {},
+    "rules": {
+      "bidirectional": true,
+      "must_keep_clear": true
+    },
+    "interface": {}
+  },
+  "visual": { "proxy": "box" },
+  "meta": {
+    "element_library_id": "MH-FORK-01",
+    "flows": ["pallet_full"],
+    "notes": "proxy only · slice11 placeable 4×2.2 · visual flat height_m≈0.25 for 2.5D · no GLB",
+    "proxy": true,
+    "visual_height_m": 0.25
+  }
+}

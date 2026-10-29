@@ -282,6 +282,9 @@ def derive_snapshot(
             out["labels"] = ["bulk"]
         if kind == "dock":
             out["labels"] = ["recv" if tid.startswith("IN-") else "ship"]
+        if kind == "station" and tid == "PK-DEPAL-01":
+            out["labels"] = ["break_bulk"]
+            out["capacitySlots"] = 1
         elements.append(out)
 
     coord = facility.get("coord") or {}

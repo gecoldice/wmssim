@@ -1,21 +1,68 @@
 import { writeFileSync } from "node:fs";
 import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE } from "../src/canvas/geom.ts";
-import { catalog } from "../src/library/catalog.ts";
+import { catalog, LIBRARY_IDS, SLICE11_IDS, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
+import { EQUIPS } from "../src/proxy/equip-index.ts";
+import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
+import { copy } from "../src/copy.ts";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
 import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
 import { MIXED_TEMPLATE_ID, asBox, buildFacility, buildLayout, columnsFor, draftFor, elementFromDrop, verdictFor } from "../src/workbench/draft.ts";
 
 const placeable = catalog.filter((item) => item.placeable);
-if (placeable.length !== 11) throw new Error(`expected 11 placeable, got ${placeable.length}`);
-const grey = catalog.filter((item) => !item.placeable).map((item) => item.id).sort();
-const expectedGrey = ["AGV-AMR-01", "ASRS-CRANE-01", "CV-BELT-01"];
-if (grey.join() !== expectedGrey.join()) throw new Error(`grey set ${grey.join()}`);
+if (placeable.length !== 78) throw new Error(`expected 78 placeable, got ${placeable.length}`);
+if (catalog.map((item) => item.id).join() !== LIBRARY_IDS.join()) throw new Error("catalog order drifted from LIBRARY_IDS");
+const groups = ["IN", "ST", "PK", "CV", "MH", "OUT", "AUX"];
+const seen = catalog.map((item) => item.group);
+let last = -1;
+for (const group of seen) {
+  const index = groups.indexOf(group);
+  if (index < last) throw new Error(`panel order broke at ${group}`);
+  last = index;
+}
+if (catalog.some((item) => !item.placeable)) throw new Error("library id left grey");
+if (catalog.some((item) => item.id !== item.id.toUpperCase() || item.id.includes("_"))) throw new Error("short name leaked into catalog");
+for (const id of ["CV-STR-01", "MH-AGV-01", "ST-ASRS-01", "CV-BELT-01", "PK-DEPAL-AUTO-01"]) {
+  if (!isUnsimulated(id)) throw new Error(`${id} should stay out of the DES`);
+  const item = catalog.find((row) => row.id === id);
+  if (!item?.placeable) throw new Error(`${id} must still be draggable`);
+}
+if (isUnsimulated("ST-PAL-01") || isUnsimulated("IN-DOCK-01")) throw new Error("manual types marked unsimulated");
+const blocked = unsimulatedMessage(["CV-STR-01", "MH-AGV-01", "ST-ASRS-01"]);
+if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-STR-01") || blocked.includes("即将")) {
+  throw new Error(blocked);
+}
+if (JSON.stringify(copy).includes("即将")) throw new Error("copy still says 即将");
 
 const draft = draftFor("mixed");
 if (draft.templateId !== MIXED_TEMPLATE_ID) throw new Error(draft.templateId);
 const present = new Set(draft.elements.map((el) => el.typeElementId));
-for (const item of placeable) {
-  if (!present.has(item.id)) throw new Error(`template missing ${item.id}`);
+for (const id of SLICE11_IDS) {
+  if (!present.has(id)) throw new Error(`template missing ${id}`);
+}
+const blankDrop = draftFor("blank");
+for (const item of catalog) {
+  const aisleTop = 12 + 3.5 / 2;
+  const y = aisleTop + 0.45 + item.widthM / 2;
+  const dropped = elementFromDrop([], item.id, 20, y, { id: "n-acc", x: 20, y: 12 });
+  if (dropped.lengthM !== item.lengthM || dropped.widthM !== item.widthM || dropped.yawDeg !== item.orientationDeg) {
+    throw new Error(`footprint ${item.id} ${dropped.lengthM}x${dropped.widthM}@${dropped.yawDeg}`);
+  }
+  const verdict = verdictFor(blankDrop, dropped, null);
+  if (verdict.tone === "red") throw new Error(`${item.id} refused on blank: ${verdict.reason}`);
+}
+const buf = elementFromDrop([], "IN-BUF-01", 20, 16, null);
+const bufSpan = (yaw) => {
+  const corners = footprintCorners(buf.x, buf.y, buf.lengthM, buf.widthM, yaw);
+  return Math.max(...corners.map((p) => p.x)) - Math.min(...corners.map((p) => p.x));
+};
+if (Math.abs(bufSpan(0) - 6) > 1e-6 || Math.abs(bufSpan(90) - 3) > 1e-6) throw new Error("IN-BUF footprint did not follow orientation");
+const stg = elementFromDrop([], "OUT-STG-01", 20, 16, null);
+const stgSpan = (yaw) => {
+  const corners = footprintCorners(stg.x, stg.y, stg.lengthM, stg.widthM, yaw);
+  return Math.max(...corners.map((p) => p.x)) - Math.min(...corners.map((p) => p.x));
+};
+if (Math.abs(stgSpan(0) - stg.lengthM) > 1e-6 || Math.abs(stgSpan(90) - stg.widthM) > 1e-6) {
+  throw new Error("OUT-STG footprint did not follow orientation");
 }
 const boxes = draft.elements.map((el) => ({ id: el.instanceId, box: aabbOf(asBox(el)), el }));
 for (const row of boxes) {
@@ -136,6 +183,59 @@ const heldFork = held.find((actor) => actor.resourceId === "forklift-1");
 if (!heldFork || Math.abs(heldFork.x - 10) > 1e-6 || Math.abs(heldFork.y) > 1e-6) throw new Error(JSON.stringify(heldFork));
 const bounds = segmentBounds(segments, 3600);
 if (bounds.t0 !== 0 || bounds.t1 !== 20) throw new Error(JSON.stringify(bounds));
+
+const ids = Object.keys(EQUIPS);
+if (ids.length !== 15) throw new Error(`equip count ${ids.length}`);
+for (const id of ids) {
+  const equip = EQUIPS[id];
+  if (equip.element_id !== id) throw new Error(`element_id ${id}`);
+  if (equip.visual?.proxy !== "box" || equip.lod?.lod1 !== "proxy:box" || equip.glb) throw new Error(`proxy flag ${id}`);
+  if (!portsNearFootprint(equip)) throw new Error(`ports ${id}`);
+  const model = buildFromEquip(equip);
+  if (model.badge !== "代理") throw new Error(`badge ${id}`);
+  if (model.lengthM <= 0 || model.widthM <= 0 || model.heightM <= 0) throw new Error(`metric ${id}`);
+}
+const rackEquip = buildFromEquip(EQUIPS["ST-PAL-01"]);
+if (Math.abs(rackEquip.lengthM - 13.5) > 1e-6 || Math.abs(rackEquip.widthM - 1.1) > 1e-6 || Math.abs(rackEquip.heightM - 6) > 1e-6) {
+  throw new Error(`ST-PAL equip ${rackEquip.lengthM} ${rackEquip.widthM} ${rackEquip.heightM}`);
+}
+if (rackEquip.seams.filter((seam) => seam.kind === "bay").length < 4) throw new Error("rack bay seams");
+if (rackEquip.seams.filter((seam) => seam.kind === "level").length < 3) throw new Error("rack level seams");
+const dock = buildFromEquip(EQUIPS["IN-DOCK-01"]);
+if (!dock.features.includes("step") || !dock.features.includes("opening")) throw new Error(`dock ${dock.features}`);
+const floor = buildFromEquip(EQUIPS["ST-FLOOR-01"]);
+if (floor.seams.filter((seam) => seam.kind === "layer").length < 2) throw new Error("floor layers");
+const station = buildFromEquip(EQUIPS["PK-STA-01"]);
+if (!station.features.includes("tabletop") || station.boxes.filter((box) => box.role === "leg").length !== 4) throw new Error("station");
+const hand = buildFromEquip(EQUIPS["MH-HAND-01"]);
+if (hand.heightM < 0.05 || hand.heightM > 0.08) throw new Error(`hand height ${hand.heightM}`);
+const forkProxy = buildFromEquip(EQUIPS["MH-FORK-01"]);
+const placedHand = buildPlaced("MH-HAND-01", { lengthM: 6, widthM: 1.2, heightM: 0.2 });
+if (Math.abs(forkProxy.heightM - 0.25) > 1e-6 || forkProxy.widthM <= placedHand.widthM || placedHand.heightM > 0.08) {
+  throw new Error(`fork/hand ${forkProxy.heightM} ${forkProxy.widthM} ${placedHand.heightM}`);
+}
+const bufEquip = buildFromEquip(EQUIPS["IN-BUF-01"]);
+if (bufEquip.boxes.filter((box) => box.role === "rail").length < 4) throw new Error("buffer rails");
+const full = buildFromEquip(EQUIPS["OUT-FULL-01"]);
+if (full.seams.filter((seam) => seam.kind === "bay").length < 3) throw new Error("full bay seams");
+const put = buildFromEquip(EQUIPS["PK-PUT-EACH-01"]);
+if (put.seams.filter((seam) => seam.kind === "bay").length < 5) throw new Error("putwall bays");
+const wall = buildFromEquip(EQUIPS["AUX-WALL-01"]);
+if (!wall.features.includes("door")) throw new Error("wall door");
+const fire = buildFromEquip(EQUIPS["AUX-FIRE-01"]);
+if (fire.heightM > 0.16) throw new Error(`fire height ${fire.heightM}`);
+if (PALETTE.dock.fill !== "#A8C5E8" || PALETTE.rack.fill !== "#C5CBD0" || PALETTE.aisle.fillAlpha > 0.3) throw new Error("palette");
+const placed = buildPlaced("ST-PAL-01", { lengthM: 2.7, widthM: 1.2, heightM: 6, bays: 1, levels: 4 });
+const nearZoom = frameForZoom(placed, 1);
+const farZoom = frameForZoom(placed, 3);
+if (nearZoom.lengthM !== farZoom.lengthM || nearZoom.widthM !== farZoom.widthM || nearZoom.heightM !== farZoom.heightM) {
+  throw new Error("zoom changed meters");
+}
+if (Math.abs(farZoom.screenLengthPx / farZoom.ppm - placed.lengthM) > 1e-9) throw new Error("screen scale drifted");
+const conflict = interactionStyle({ selected: true, conflict: true }, { fill: "#C5CBD0", fillAlpha: 0.4, stroke: "#6E787E", shadowAlpha: 0.08 });
+if (conflict.stroke !== "#C44B4B") throw new Error("conflict stroke lost");
+const alone = buildPlaced("ST-OVF-01", { lengthM: 4.8, widthM: 2.4, heightM: 1.5 });
+if (alone.badge !== "代理" || !alone.features.includes("rail")) throw new Error("fallback proxy");
 
 const facility = buildFacility(draft, "facility-mixed", "pending");
 const layout = buildLayout(draft, "layout-mixed", "pending", { id: "facility-mixed", revision: "pending" });

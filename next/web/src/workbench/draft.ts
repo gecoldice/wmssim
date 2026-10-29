@@ -10,22 +10,11 @@ import {
   type BoxEl,
   type ColumnMark,
 } from "../canvas/geom";
-import { catalogItem, isPlaceable, type CatalogItem } from "../library/catalog";
+import { catalogItem, instancePrefix, isPlaceable, type CatalogItem } from "../library/catalog";
 
 export const MIXED_TEMPLATE_ID = "template.mixed_wh_v0";
 
-export type PlaceableType =
-  | "ST-PAL-01"
-  | "ST-FLOOR-01"
-  | "IN-DOCK-01"
-  | "OUT-DOCK-01"
-  | "PK-DEPAL-01"
-  | "PK-PUT-EACH-01"
-  | "OUT-PACK-01"
-  | "MH-HAND-01"
-  | "MH-FORK-01"
-  | "AUX-FIRE-01"
-  | "AUX-WALL-01";
+export type PlaceableType = string;
 
 export type PoseEl = {
   instanceId: string;
@@ -77,20 +66,6 @@ const EVIDENCE = {
   sourceRef: "workbench",
   confirmationStatus: "confirmed",
   updatedAt: "2026-10-29T00:00:00+00:00",
-};
-
-const PREFIX: Record<PlaceableType, string> = {
-  "ST-PAL-01": "rack",
-  "ST-FLOOR-01": "floor",
-  "IN-DOCK-01": "dock-in",
-  "OUT-DOCK-01": "dock-out",
-  "PK-DEPAL-01": "depal",
-  "PK-PUT-EACH-01": "put",
-  "OUT-PACK-01": "pack",
-  "MH-HAND-01": "hand",
-  "MH-FORK-01": "fork",
-  "AUX-FIRE-01": "fire",
-  "AUX-WALL-01": "wall",
 };
 
 /** Starter meters so a blank sheet can take the first device without typing six sizes. */
@@ -558,7 +533,7 @@ export function horizonSec(fields: ScenarioFields): number {
 }
 
 export function nextInstance(elements: PoseEl[], type: PlaceableType): string {
-  const prefix = PREFIX[type];
+  const prefix = instancePrefix(type);
   const taken = new Set(elements.map((el) => el.instanceId));
   let i = 1;
   let id = `${prefix}-${i}`;

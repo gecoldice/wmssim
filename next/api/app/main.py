@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from des.derive import derive_snapshot
 from des.engine import run_des
 from des.errors import DesError
+from des.scope import unsimulated_ids, unsimulated_message
 from des.validate import validate_layout
 
 from .contracts import schema_errors
@@ -377,14 +378,6 @@ def simulate(body: Dict[str, Any]) -> Any:
     demand = (body or {}).get("demand") or {}
     operating = (body or {}).get("operating") or {}
     run_control = (body or {}).get("runControl") or {}
-    for flow in demand.get("flows") or []:
-        if flow.get("flowKind") != "full_pallet":
-            return _error(
-                422,
-                "UNSUPPORTED_SCENARIO",
-                f"本切片只接受整托 full_pallet，收到 {flow.get('flowKind')}",
-                {"flowKind": flow.get("flowKind")},
-            )
     with store.lock:
         row = store.layouts.get(layout_ref.get("id"))
         if not row:
@@ -431,6 +424,11 @@ def simulate(body: Dict[str, Any]) -> Any:
         snapshot = deepcopy(prepared["snapshot"])
         if snapshot.get("schemaVersion") != "0.2":
             return _error(422, "CONTRACT_VERSION", "快照版本不是 0.2")
+        blocked = unsimulated_ids(
+            el.get("typeElementId") or "" for el in snapshot.get("elements") or []
+        )
+        if blocked:
+            return _error(422, "UNSUPPORTED_SCENARIO", unsimulated_message(blocked), {"typeElementIds": blocked})
         expected = layout_ref["revision"]
         if snapshot.get("layoutRevision") != expected:
             return _error(
