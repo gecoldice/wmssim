@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: simapp API
-  version: 0.3.5
+  version: 0.3.6
   description: |
     仓库布局规划与运营推演应用 API。
     外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
+    本地持久化：默认 SQLite 文件 data/simapp.sqlite（SIMAPP_DB=off 时为进程内）。
+    GET /projects 与 GET /projects/{projectId}/workspace 供工作台重启后恢复。
     M5：识图（/recognition-jobs）与高级优化（/advanced-evaluations）只返回失败或不支持，不产出几何或分数。
     M4：BOM/成本（/cost-estimate-jobs）、比较（/comparisons）、报告（/reports）；
     缺价不排最低成本；缺轴不补零；layout_only vs whole_solution。
@@ -35,6 +37,13 @@ paths:
         "200":
           description: ok
   /projects:
+    get:
+      tags: [projects]
+      summary: List persisted projects
+      operationId: listProjects
+      responses:
+        "200":
+          description: newest first
     post:
       tags: [projects]
       summary: Create project
@@ -48,6 +57,18 @@ paths:
       responses:
         "201":
           description: created
+  /projects/{projectId}/workspace:
+    get:
+      tags: [projects]
+      summary: Workbench restore payload (layout, prepare summary, run cards, comparison)
+      operationId: getProjectWorkspace
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: workspace
+        "404":
+          description: missing project
   /projects/{projectId}:
     get:
       tags: [projects]

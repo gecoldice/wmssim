@@ -1,16 +1,44 @@
-"""进程内项目/布局/规划/派生/跑次/成本/比较存储（M4 本地）。无远程 DB。"""
+"""项目/布局/跑次/成本/比较存储。
+
+默认落到 simapp/data/simapp.sqlite（重启不丢）。
+SIMAPP_DB=off|memory|:memory: 时只留在进程内，供回归测试使用。
+"""
 
 from __future__ import annotations
 
+import json
+import os
+import sqlite3
+import threading
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
+
+_AUTO = object()
+_MEMORY_TOKENS = {"", "off", "memory", ":memory:"}
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def resolve_db_path(explicit: Any = _AUTO) -> Optional[Path]:
+    """None 表示不落盘。显式路径优先；未指定时读 SIMAPP_DB，再默认到 data/simapp.sqlite。"""
+    if explicit is _AUTO:
+        raw = os.environ.get("SIMAPP_DB")
+        if raw is None:
+            return Path(__file__).resolve().parents[3] / "data" / "simapp.sqlite"
+        text = raw.strip()
+    elif explicit is None:
+        return None
+    else:
+        text = str(explicit).strip()
+    if text.lower() in _MEMORY_TOKENS:
+        return None
+    return Path(text)
 
 
 @dataclass
@@ -49,7 +77,7 @@ class ProjectRecord:
 
 
 class MemoryStore:
-    def __init__(self) -> None:
+    def __init__(self, db_path: Any = _AUTO) -> None:
         self.projects: Dict[str, ProjectRecord] = {}
         self._orphan_jobs: Dict[str, Dict[str, Any]] = {}
         self._global_candidates: Dict[str, Dict[str, Any]] = {}
@@ -57,6 +85,78 @@ class MemoryStore:
         self._global_estimates: Dict[str, str] = {}  # estimateId -> projectId
         self._global_comparisons: Dict[str, str] = {}
         self._global_reports: Dict[str, str] = {}
+        self._lock = threading.Lock()
+        self._db_path = resolve_db_path(db_path)
+        self._conn: Optional[sqlite3.Connection] = None
+        if self._db_path is not None:
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS snapshot (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            self._conn.commit()
+            self._load()
+
+    def persistence_info(self) -> Dict[str, Any]:
+        return {
+            "engine": "sqlite" if self._db_path else "memory",
+            "durable": self._db_path is not None,
+            "path": str(self._db_path) if self._db_path else None,
+        }
+
+    def _dump_state(self) -> Dict[str, Any]:
+        return {
+            "projects": {pid: asdict(rec) for pid, rec in self.projects.items()},
+            "orphanJobs": self._orphan_jobs,
+            "globalCandidates": self._global_candidates,
+            "globalRuns": self._global_runs,
+            "globalEstimates": self._global_estimates,
+            "globalComparisons": self._global_comparisons,
+            "globalReports": self._global_reports,
+        }
+
+    def _load_state(self, payload: Dict[str, Any]) -> None:
+        known = {item.name for item in fields(ProjectRecord)}
+        projects: Dict[str, ProjectRecord] = {}
+        for pid, blob in (payload.get("projects") or {}).items():
+            if not isinstance(blob, dict) or "project" not in blob:
+                continue
+            kwargs = {key: blob[key] for key in known if key in blob}
+            projects[str(pid)] = ProjectRecord(**kwargs)
+        self.projects = projects
+        self._orphan_jobs = dict(payload.get("orphanJobs") or {})
+        self._global_candidates = dict(payload.get("globalCandidates") or {})
+        self._global_runs = dict(payload.get("globalRuns") or {})
+        self._global_estimates = dict(payload.get("globalEstimates") or {})
+        self._global_comparisons = dict(payload.get("globalComparisons") or {})
+        self._global_reports = dict(payload.get("globalReports") or {})
+
+    def _load(self) -> None:
+        if self._conn is None:
+            return
+        row = self._conn.execute("SELECT payload FROM snapshot WHERE id = 1").fetchone()
+        if not row:
+            return
+        self._load_state(json.loads(row[0]))
+
+    def _commit_unlocked(self) -> None:
+        if self._conn is None:
+            return
+        payload = json.dumps(self._dump_state(), ensure_ascii=False)
+        self._conn.execute(
+            """
+            INSERT INTO snapshot (id, payload) VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET payload = excluded.payload
+            """,
+            (payload,),
+        )
+        self._conn.commit()
 
     def create_project(self, name: str, unit_system: str = "metric") -> Dict[str, Any]:
         pid = f"project-{uuid4().hex[:8]}"
@@ -429,6 +529,196 @@ class MemoryStore:
             if report_id in rec.reports:
                 return deepcopy(rec.reports[report_id])
         return None
+
+    def list_projects(self) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        for rec in self.projects.values():
+            project = rec.project
+            items.append(
+                {
+                    "id": project.get("id"),
+                    "name": project.get("name"),
+                    "unitSystem": project.get("unitSystem"),
+                    "createdAt": project.get("createdAt"),
+                    "contractVersion": project.get("contractVersion"),
+                    "facilityHead": rec.facility_head,
+                    "layoutCount": len(rec.layout_heads),
+                    "runCount": len(rec.runs),
+                    "comparisonCount": len(rec.comparisons),
+                }
+            )
+        items.sort(key=lambda row: row.get("createdAt") or "", reverse=True)
+        return items
+
+    def workspace(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """工作台恢复用的当前方案。不含事件轨迹和派生快照。"""
+        rec = self.projects.get(project_id)
+        if not rec:
+            return None
+        layout_id = _preferred_layout_id(rec)
+        layout = self.get_layout(project_id, layout_id) if layout_id else None
+        revision = layout.get("revision") if layout else None
+        variant = _variant_for_layout(rec, layout_id, revision)
+        run = _run_for_layout(rec, layout_id, revision)
+        prepare = None
+        if layout_id and revision:
+            raw_prepare = self.get_prepare_result(project_id, layout_id, revision)
+            prepare = _slim_prepare(raw_prepare)
+        manifest = (run or {}).get("runManifest") or {}
+        op_ref = manifest.get("operatingRef") or {}
+        demand_ref = manifest.get("demandRef") or {}
+        operating = (
+            self.get_operating(project_id, op_ref.get("id"), op_ref.get("revision"))
+            if op_ref.get("id")
+            else None
+        )
+        demand = (
+            self.get_demand(project_id, demand_ref.get("id"), demand_ref.get("revision"))
+            if demand_ref.get("id")
+            else None
+        )
+        comparison = deepcopy(next(reversed(rec.comparisons.values()))) if rec.comparisons else None
+        return {
+            "project": deepcopy(rec.project),
+            "facility": self.get_facility(project_id),
+            "layout": layout,
+            "variant": variant,
+            "prepare": prepare,
+            "operating": operating,
+            "demand": demand,
+            "run": _slim_run(run),
+            "comparison": comparison,
+            "persistence": self.persistence_info(),
+        }
+
+
+def _preferred_layout_id(rec: ProjectRecord) -> Optional[str]:
+    """编辑中的方案。叉车加一写在 layout-workbench-alt，不把它当成当前画布。"""
+    for variant in reversed(list(rec.variants.values())):
+        lid = (variant.get("layoutRef") or {}).get("id")
+        if lid and lid != "layout-workbench-alt" and lid in rec.layout_heads:
+            return lid
+    if "layout-workbench" in rec.layout_heads:
+        return "layout-workbench"
+    if not rec.layout_heads:
+        return None
+    return next(iter(rec.layout_heads))
+
+
+def _variant_for_layout(
+    rec: ProjectRecord, layout_id: Optional[str], revision: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    if not rec.variants:
+        return None
+    if layout_id and revision:
+        matched = [
+            item
+            for item in rec.variants.values()
+            if (item.get("layoutRef") or {}).get("id") == layout_id
+            and (item.get("layoutRef") or {}).get("revision") == revision
+        ]
+        if matched:
+            return deepcopy(matched[-1])
+    plain = [
+        item
+        for item in rec.variants.values()
+        if (item.get("layoutRef") or {}).get("id") != "layout-workbench-alt"
+    ]
+    return deepcopy((plain or list(rec.variants.values()))[-1])
+
+
+def _run_for_layout(
+    rec: ProjectRecord, layout_id: Optional[str], revision: Optional[str]
+) -> Optional[Dict[str, Any]]:
+    if not revision:
+        return None
+    matched: List[Dict[str, Any]] = []
+    for run in rec.runs.values():
+        manifest = run.get("runManifest") or {}
+        bound = run.get("layoutSnapshotBound") or {}
+        lref = manifest.get("layoutRef") or {}
+        rev_ok = (
+            run.get("layoutRevision") == revision
+            or bound.get("layoutRevision") == revision
+            or lref.get("revision") == revision
+        )
+        id_ok = layout_id is None or lref.get("id") in {None, layout_id} or bound.get("layoutId") in {
+            None,
+            layout_id,
+        }
+        if rev_ok and id_ok:
+            matched.append(run)
+    if not matched:
+        return None
+    return deepcopy(matched[-1])
+
+
+def _slim_run(run: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not run:
+        return None
+    return {
+        "runId": run.get("runId"),
+        "layoutRevision": run.get("layoutRevision"),
+        "kpi": deepcopy(run.get("kpi")),
+        "runManifest": deepcopy(run.get("runManifest")),
+        "replayBinding": deepcopy(run.get("replayBinding")),
+    }
+
+
+def _slim_prepare(payload: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not payload:
+        return None
+    report = payload.get("validationReport") or {}
+    return {
+        "simulationReady": payload.get("simulationReady"),
+        "prepareStatus": payload.get("prepareStatus"),
+        "validationStatus": report.get("status"),
+        "layoutRevision": payload.get("layoutRevision"),
+        "checks": deepcopy(report.get("checks") or []),
+    }
+
+
+_MUTATORS = (
+    "create_project",
+    "put_drawing",
+    "put_facility",
+    "put_demand",
+    "put_operating",
+    "put_run",
+    "put_planning_draft",
+    "put_layout_revision",
+    "put_variant",
+    "save_prepare_result",
+    "attach_job",
+    "put_candidates",
+    "put_price_book",
+    "put_cost_basis",
+    "put_score_profile",
+    "put_cost_estimate",
+    "put_comparison",
+    "put_report",
+)
+
+
+def _install_persistence(cls: type) -> None:
+    for name in _MUTATORS:
+        original = getattr(cls, name)
+
+        def make(fn):
+            def wrapped(self, *args, **kwargs):
+                with self._lock:
+                    result = fn(self, *args, **kwargs)
+                    self._commit_unlocked()
+                    return result
+
+            wrapped.__name__ = fn.__name__
+            wrapped.__doc__ = fn.__doc__
+            return wrapped
+
+        setattr(cls, name, make(original))
+
+
+_install_persistence(MemoryStore)
 
 
 class RevisionConflict(Exception):

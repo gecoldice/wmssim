@@ -7,6 +7,9 @@ import {
   buildOperating,
   buildPlanningDemand,
   buildSimDemand,
+  demoCostBasis,
+  demoPriceBook,
+  demoScoreProfile,
   elementsFromDocument,
   templateElements,
   type PlacedElement,
@@ -38,6 +41,8 @@ type Cards = {
   bottleneck?: { top1?: { entityId?: string | null; note?: string; waitSec?: number } };
 };
 
+type DocRef = { id: string; revision: string };
+
 type SimState = {
   runId: string;
   layoutRevision: string;
@@ -46,6 +51,9 @@ type SimState = {
   completedTasks: number | null;
   incompleteTasks: number | null;
   warnings: string[];
+  demandRef: DocRef;
+  operatingRef: DocRef;
+  forkliftCount: number;
 };
 
 type Candidate = {
@@ -61,8 +69,62 @@ type FailureCard = {
   code: string;
   message: string;
   correction: string;
-  score: number | null;
-  horizonCost: number | null;
+};
+
+type CompareRow = {
+  label?: string;
+  effectiveCapacity?: number | null;
+  completedCycleMeanSec?: number | null;
+  outboundThroughput?: number | null;
+  waitMeanSec?: number | null;
+  capex?: number | null;
+  costStatus?: string | null;
+  layoutRevision?: string | null;
+  runId?: string | null;
+  resourceFingerprint?: Record<string, number | string>;
+};
+
+type CompareState = {
+  id: string;
+  mode: string;
+  kpiFromUiDemo: boolean;
+  radarEnabled: boolean;
+  radarNote: string;
+  series: Array<{ entryId?: string; label?: string; points?: Array<{ axisId: string; score: number | null }> }>;
+  rows: CompareRow[];
+  issues: string[];
+};
+
+type WorkspacePayload = {
+  project: { id: string; name?: string };
+  facility?: { revision?: string; boundary?: { outer?: Array<{ x: number; y: number }> } } | null;
+  layout?: {
+    id: string;
+    revision: string;
+    aisles?: Array<{ widthM?: number; centerline?: Array<{ y?: number }> }>;
+  } | null;
+  variant?: { id: string; revision: string } | null;
+  prepare?: PrepareState | null;
+  operating?: { resourcePools?: Array<{ resourceType?: string; count?: number }> } | null;
+  demand?: { flows?: Array<{ intent?: string; quantity?: number }> } | null;
+  run?: {
+    runId: string;
+    layoutRevision: string;
+    kpi?: {
+      cards?: Cards;
+      secondary?: { completionRate?: number | null; completedTasks?: number; incompleteTasks?: number };
+    };
+    runManifest?: { demandRef?: DocRef; operatingRef?: DocRef; warnings?: Array<{ code?: string } | string> };
+  } | null;
+  comparison?: {
+    id: string;
+    mode: string;
+    kpiFromUiDemo?: boolean;
+    radar?: { radarEnabled?: boolean; note?: string; series?: CompareState["series"] };
+    table?: { rows?: CompareRow[] };
+    comparability?: { issues?: Array<{ message?: string; code?: string }> };
+  } | null;
+  persistence?: { engine?: string; durable?: boolean };
 };
 
 type SavedRefs = {
@@ -74,14 +136,7 @@ type SavedRefs = {
   variantRevision: string;
 };
 
-const ADVANCED = [
-  "nsga2",
-  "multi_objective",
-  "lifecycle_cost",
-  "expansion_scale",
-  "operability_scale",
-  "calibrated_automation",
-] as const;
+const ALT_LAYOUT_ID = "layout-workbench-alt";
 
 function fmt(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
@@ -90,6 +145,33 @@ function fmt(value: number | null | undefined, digits = 2): string {
 
 function cloneElements(elements: PlacedElement[]): PlacedElement[] {
   return elements.map((el) => ({ ...el, params: { ...el.params } }));
+}
+
+function warningCodes(warnings: Array<{ code?: string } | string> | undefined): string[] {
+  return (warnings ?? [])
+    .map((item) => (typeof item === "string" ? item : item.code || ""))
+    .filter((code) => code.length > 0);
+}
+
+function compareFromApi(comparison: NonNullable<WorkspacePayload["comparison"]>): CompareState {
+  return {
+    id: comparison.id,
+    mode: comparison.mode,
+    kpiFromUiDemo: comparison.kpiFromUiDemo === true,
+    radarEnabled: comparison.radar?.radarEnabled === true,
+    radarNote: comparison.radar?.note || "缺失值不绘为 0",
+    series: comparison.radar?.series ?? [],
+    rows: comparison.table?.rows ?? [],
+    issues: (comparison.comparability?.issues ?? []).map((item) =>
+      [item.code, item.message].filter(Boolean).join("："),
+    ),
+  };
+}
+
+function fingerprintText(fp: CompareRow["resourceFingerprint"]): string {
+  if (!fp) return "—";
+  const parts = Object.entries(fp).map(([key, value]) => `${key}=${value}`);
+  return parts.length ? parts.join("，") : "—";
 }
 
 export function App() {
@@ -115,12 +197,94 @@ export function App() {
   const [planOutcome, setPlanOutcome] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [disabledGoals, setDisabledGoals] = useState<string[]>([]);
-  const [failures, setFailures] = useState<FailureCard[]>([]);
+  const [compare, setCompare] = useState<CompareState | null>(null);
+  const [storeNote, setStoreNote] = useState("本地库");
   const [recognition, setRecognition] = useState<FailureCard | null>(null);
-  const [recCapability, setRecCapability] = useState<(typeof ADVANCED)[number] | string>("dxf_vector_extract");
+  const [recCapability, setRecCapability] = useState("dxf_vector_extract");
   const [recFile, setRecFile] = useState("hall.dxf");
   const seq = useRef(1);
   const history = useRef<PlacedElement[][]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function restore() {
+      try {
+        const listed = await apiJson<{ items: Array<{ id: string; name: string }> }>("/api/v1/projects");
+        const named = listed.items.filter((item) => item.name === "工作台方案");
+        const pick = (named.length ? named : listed.items)[0];
+        if (!pick || cancelled) {
+          if (!cancelled) setStoreNote(listed.items.length ? "本地库" : "本地库 · 还没有已保存方案");
+          return;
+        }
+        const ws = await apiJson<WorkspacePayload>(`/api/v1/projects/${pick.id}/workspace`);
+        if (cancelled) return;
+        const placed = ws.layout ? elementsFromDocument(ws.layout) : [];
+        if (placed.length) {
+          setElements(placed);
+          const maxSeq = placed.reduce((max, el) => {
+            const match = /-(\d+)$/.exec(el.instanceId);
+            return match ? Math.max(max, Number(match[1]) + 1) : max;
+          }, 1);
+          seq.current = Math.max(seq.current, maxSeq);
+        }
+        const outer = ws.facility?.boundary?.outer ?? [];
+        if (outer.length) {
+          setWidthM(Math.max(...outer.map((point) => point.x)));
+          setDepthM(Math.max(...outer.map((point) => point.y)));
+        }
+        const aisle = ws.layout?.aisles?.[0];
+        if (aisle?.widthM) setAisleWidthM(aisle.widthM);
+        const aisleY = aisle?.centerline?.[0]?.y;
+        if (typeof aisleY === "number") setAisleYM(aisleY);
+        if (ws.layout) {
+          setSaved({
+            projectId: ws.project.id,
+            facilityRevision: ws.facility?.revision || "",
+            layoutId: ws.layout.id,
+            layoutRevision: ws.layout.revision,
+            variantId: ws.variant?.id || "",
+            variantRevision: ws.variant?.revision || "",
+          });
+        }
+        if (ws.prepare) setPrepare(ws.prepare);
+        const pool = ws.operating?.resourcePools?.find((item) => item.resourceType === "forklift");
+        if (pool?.count) setForkliftCount(pool.count);
+        const outbound = ws.demand?.flows?.find((flow) => flow.intent === "outbound")?.quantity;
+        if (typeof outbound === "number") setOutboundQty(outbound);
+        const demandRef = ws.run?.runManifest?.demandRef;
+        const operatingRef = ws.run?.runManifest?.operatingRef;
+        if (ws.run && demandRef?.id && operatingRef?.id) {
+          setSim({
+            runId: ws.run.runId,
+            layoutRevision: ws.run.layoutRevision,
+            cards: ws.run.kpi?.cards ?? {},
+            completionRate: ws.run.kpi?.secondary?.completionRate ?? null,
+            completedTasks: ws.run.kpi?.secondary?.completedTasks ?? null,
+            incompleteTasks: ws.run.kpi?.secondary?.incompleteTasks ?? null,
+            warnings: warningCodes(ws.run.runManifest?.warnings),
+            demandRef,
+            operatingRef,
+            forkliftCount: pool?.count || 1,
+          });
+        }
+        if (ws.comparison) setCompare(compareFromApi(ws.comparison));
+        setDirty(false);
+        const durable = ws.persistence?.durable !== false;
+        setStoreNote(durable ? "本地库 · 已恢复" : "内存模式 · 已恢复");
+        setStatusNote(
+          ws.layout
+            ? `已从本地库恢复「${ws.project.name || "方案"}」。布局、准备和跑次都还在。`
+            : "本地库里有项目，但还没有布局。",
+        );
+      } catch {
+        if (!cancelled) setStoreNote("未连上 API");
+      }
+    }
+    void restore();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const selected = elements.find((el) => el.instanceId === selectedId) ?? null;
   const filtered = useMemo(() => {
@@ -231,14 +395,14 @@ export function App() {
           method: "POST",
           body: JSON.stringify({ name: "工作台方案", unitSystem: "metric" }),
         });
-    const facilityRevision = `f-ui-${seq.current++}`;
+    const facilityRevision = `f-ui-${Date.now().toString(36)}-${seq.current++}`;
     const facility = buildFacility(widthM, depthM, facilityRevision);
     const facilityRes = await apiJson<{ gate?: { usableForValidatedPlanning?: boolean } }>(
       `/api/v1/projects/${project.id}/facility-revisions`,
       { method: "POST", body: JSON.stringify({ facility }) },
     );
     const layoutId = saved?.layoutId ?? "layout-workbench";
-    const layoutRevision = `ld-ui-${seq.current++}`;
+    const layoutRevision = `ld-ui-${Date.now().toString(36)}-${seq.current++}`;
     const document = buildLayout({
       layoutId,
       revision: layoutRevision,
@@ -255,7 +419,7 @@ export function App() {
         method: "POST",
         body: JSON.stringify({
           projectId: project.id,
-          baseRevision: saved && saved.layoutId === layoutId ? saved.layoutRevision : null,
+          baseRevision: saved && saved.layoutId === layoutId && saved.layoutRevision ? saved.layoutRevision : null,
           document,
         }),
       },
@@ -287,7 +451,7 @@ export function App() {
     return refs;
   }
 
-  async function prepareLayout(refs: SavedRefs): Promise<PrepareState> {
+  async function prepareLayout(refs: SavedRefs, publish = true): Promise<PrepareState> {
     const body = await apiJson<{
       simulationReady: boolean;
       prepareStatus: string;
@@ -311,7 +475,7 @@ export function App() {
       layoutRevision: body.layoutRevision,
       checks: body.validationReport?.checks ?? [],
     };
-    setPrepare(next);
+    if (publish) setPrepare(next);
     return next;
   }
 
@@ -350,8 +514,8 @@ export function App() {
         setView("layout");
         return;
       }
-      const demandRev = `d-ui-${seq.current++}`;
-      const opRev = `o-ui-${seq.current++}`;
+      const demandRev = `d-ui-${Date.now().toString(36)}-${seq.current++}`;
+      const opRev = `o-ui-${Date.now().toString(36)}-${seq.current++}`;
       const demand = buildSimDemand(outboundQty, demandRev, rack.instanceId);
       const operating = buildOperating(forkliftCount, opRev);
       await apiJson("/api/v1/demands", {
@@ -395,6 +559,9 @@ export function App() {
         completedTasks: result.kpi?.secondary?.completedTasks ?? null,
         incompleteTasks: result.kpi?.secondary?.incompleteTasks ?? null,
         warnings: (result.warnings ?? []).map((item) => item.code),
+        demandRef: { id: demand.id, revision: demand.revision },
+        operatingRef: { id: operating.id, revision: operating.revision },
+        forkliftCount,
       });
       setStatusNote(`推演完成 runId=${result.runId}。四卡来自事件，不是界面公式。`);
       setView("results");
@@ -561,8 +728,6 @@ export function App() {
         code: result.failure?.code ?? "UNKNOWN",
         message: result.failure?.message ?? "无说明",
         correction: result.correction?.message ?? "",
-        score: null,
-        horizonCost: null,
       });
       if (result.producedGeometry || result.claimsValidatedGeometry) {
         setError("识图接口返回了几何，这与 M5 失败路径不符。");
@@ -576,53 +741,170 @@ export function App() {
     }
   }
 
-  async function loadFailures() {
+  async function onCostCompare() {
+    if (!saved?.projectId || !saved.variantId || !sim) {
+      setStatusNote("先完成一次推演，再估算成本并对比。");
+      setView("results");
+      return;
+    }
+    if (dirty) {
+      setStatusNote("布局已改。先重新推演，再用这次跑次和叉车加一的方案对比。");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const projectId = saved?.projectId;
-      const cards: FailureCard[] = [];
-      for (const capability of ADVANCED) {
-        const inputs =
-          capability === "lifecycle_cost"
-            ? {
-                horizonYears: 5,
-                feeComplete: true,
-                capex: 100000,
-                annualOpex: 20000,
-                discountRequested: true,
-                discountRate: 0.08,
-              }
-            : capability === "multi_objective"
-              ? { goals: ["lifecycle_cost", "easy_automation", "expandable"] }
-              : capability === "calibrated_automation"
-                ? { equipment: ["AGV"], calibrated: false }
-                : {};
-        const result = await apiJson<{
-          status: string;
-          failure?: { code: string; message: string };
-          correction?: { message: string };
-          score: number | null;
-          horizonCost: number | null;
-          claimsBetterThanBaseline: boolean;
-        }>("/api/v1/advanced-evaluations", {
-          method: "POST",
-          body: JSON.stringify({ projectId, capability, inputs }),
-        });
-        cards.push({
-          capability,
-          status: result.status,
-          code: result.failure?.code ?? "UNKNOWN",
-          message: result.failure?.message ?? "",
-          correction: result.correction?.message ?? "",
-          score: result.score,
-          horizonCost: result.horizonCost,
-        });
-        if (result.claimsBetterThanBaseline || result.score !== null || result.horizonCost !== null) {
-          throw new Error(`${capability} 返回了不该出现的分数或收益`);
-        }
+      const projectId = saved.projectId;
+      const priceBook = demoPriceBook();
+      const costBasis = demoCostBasis();
+      const scoreProfile = demoScoreProfile();
+      const postedBook = await apiJson<{ demoOnly?: boolean }>("/api/v1/price-books", {
+        method: "POST",
+        body: JSON.stringify({ projectId, priceBook }),
+      });
+      if (postedBook.demoOnly !== true) {
+        throw new Error("价目未标 demoOnly，已停止，避免把演示价当成正式报价。");
       }
-      setFailures(cards);
+      await apiJson("/api/v1/cost-bases", {
+        method: "POST",
+        body: JSON.stringify({ projectId, costBasis }),
+      });
+      await apiJson("/api/v1/score-profiles", {
+        method: "POST",
+        body: JSON.stringify({ projectId, scoreProfile }),
+      });
+
+      const estimate = async (variant: DocRef, layout: DocRef, operating: DocRef) =>
+        apiJson<{ costEstimateId: string; status: string; totals?: { capex?: number | null } }>(
+          "/api/v1/cost-estimate-jobs",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              projectId,
+              variantRef: variant,
+              layoutRef: layout,
+              priceBookRef: { id: priceBook.id, revision: priceBook.revision },
+              costBasisRef: { id: costBasis.id, revision: costBasis.revision },
+              operatingRef: operating,
+              sync: true,
+            }),
+          },
+        );
+
+      const currentLayout = { id: saved.layoutId, revision: saved.layoutRevision };
+      const currentVariant = { id: saved.variantId, revision: saved.variantRevision };
+      const currentCost = await estimate(currentVariant, currentLayout, sim.operatingRef);
+
+      const altRevision = `ld-alt-${Date.now().toString(36)}-${seq.current++}`;
+      const altDocument = buildLayout({
+        layoutId: ALT_LAYOUT_ID,
+        revision: altRevision,
+        facilityRevision: saved.facilityRevision,
+        elements,
+        widthM,
+        depthM,
+        aisleWidthM,
+        aisleYM,
+      });
+      const altSaved = await apiJson<{ layoutRef: DocRef }>(`/api/v1/layouts/${ALT_LAYOUT_ID}/revisions`, {
+        method: "POST",
+        body: JSON.stringify({ projectId, baseRevision: null, document: altDocument }),
+      });
+      const altVariant = await apiJson<DocRef>(`/api/v1/projects/${projectId}/variants`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: "叉车加一",
+          source: "manual",
+          layoutRef: altSaved.layoutRef,
+        }),
+      });
+      const altReady = await prepareLayout(
+        {
+          projectId,
+          facilityRevision: saved.facilityRevision,
+          layoutId: altSaved.layoutRef.id,
+          layoutRevision: altSaved.layoutRef.revision,
+          variantId: altVariant.id,
+          variantRevision: altVariant.revision,
+        },
+        false,
+      );
+      if (!altReady.simulationReady) {
+        throw new Error("叉车加一的布局校验未通过，没有做对比。");
+      }
+      const altCount = sim.forkliftCount + 1;
+      const altOperating = buildOperating(altCount, `o-alt-${Date.now().toString(36)}-${seq.current++}`);
+      await apiJson("/api/v1/operating-profiles", {
+        method: "POST",
+        body: JSON.stringify({ projectId, operating: altOperating }),
+      });
+      const altRun = await apiJson<{ runId: string }>("/api/v1/simulation-jobs", {
+        method: "POST",
+        body: JSON.stringify({
+          projectId,
+          variantRef: altVariant,
+          scenarioPackage: {
+            contractVersion: "0.3",
+            scenarioId: "scenario-workbench-alt",
+            demandRef: sim.demandRef,
+            operatingRef: { id: altOperating.id, revision: altOperating.revision },
+            runControl: {
+              horizonSec: 3600,
+              seedStreams: { demand: 42, dispatch: 42 },
+              demandSampleRef: null,
+              metricDefinitionVersion: "metrics-m3-v1",
+            },
+            expectedLayoutRevision: altSaved.layoutRef.revision,
+          },
+        }),
+      });
+      const altCost = await estimate(altVariant, altSaved.layoutRef, {
+        id: altOperating.id,
+        revision: altOperating.revision,
+      });
+
+      const body = await apiJson<{ comparison: NonNullable<WorkspacePayload["comparison"]> }>(
+        "/api/v1/comparisons",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            projectId,
+            mode: "whole_solution",
+            commonBasis: {
+              demandRef: sim.demandRef,
+              engineVersion: "m3-des-0.1",
+            },
+            scoreProfileRef: { id: scoreProfile.id, revision: scoreProfile.revision },
+            entries: [
+              {
+                entryId: "current",
+                label: "当前方案",
+                variantRef: currentVariant,
+                layoutRef: currentLayout,
+                runId: sim.runId,
+                costEstimateId: currentCost.costEstimateId,
+                operatingRef: sim.operatingRef,
+              },
+              {
+                entryId: "forklift-plus",
+                label: `叉车 ${altCount}`,
+                variantRef: altVariant,
+                layoutRef: altSaved.layoutRef,
+                runId: altRun.runId,
+                costEstimateId: altCost.costEstimateId,
+                operatingRef: { id: altOperating.id, revision: altOperating.revision },
+              },
+            ],
+          }),
+        },
+      );
+      const next = compareFromApi(body.comparison);
+      if (next.kpiFromUiDemo) {
+        throw new Error("比较结果标记了界面公式，已丢弃。");
+      }
+      setCompare(next);
+      setStatusNote("对比来自 /comparisons。周期缺失保持空，不拿等待均值代替。价目是 demo 输入。");
+      setView("compare");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -660,9 +942,9 @@ export function App() {
           <strong>simapp</strong>
           <span className="muted"> 布局工作台</span>
         </div>
-        <div className="muted">
-          契约 {CONTRACT_VERSION} · Snapshot {SNAPSHOT_SCHEMA_VERSION} · equip {EQUIP_SCHEMA_VERSION}
-        </div>
+          <div className="muted">
+            契约 {CONTRACT_VERSION} · Snapshot {SNAPSHOT_SCHEMA_VERSION} · equip {EQUIP_SCHEMA_VERSION} · {storeNote}
+          </div>
         <div className={dirty ? "pill warn" : "pill"}>{saveLabel}</div>
       </header>
       <nav className="views">
@@ -996,6 +1278,12 @@ export function App() {
                 </article>
               </div>
               {sim.warnings.length ? <p className="hint">警告：{sim.warnings.join("、")}</p> : null}
+              {saved && sim.layoutRevision !== saved.layoutRevision ? (
+                <p className="warntext">下面是跑次 {sim.layoutRevision}，当前保存的修订是 {saved.layoutRevision}。</p>
+              ) : null}
+              <button type="button" className="primary" onClick={() => void onCostCompare()} disabled={busy || dirty}>
+                估算成本并对比叉车加一
+              </button>
               <button type="button" onClick={() => setView("layout")}>
                 回到布局修改
               </button>
@@ -1006,26 +1294,70 @@ export function App() {
 
       {view === "compare" ? (
         <section className="sheet">
-          <h2>M5 扩展不参与打分</h2>
-          <p>
-            多方案的库容、效率和初投仍走 M4 的比较接口。生命周期、扩容、运维和 NSGA-II 在本切片没有结果，缺轴不补 0，这里也不画雷达。
+          <h2>方案对比</h2>
+          <p className="hint">
+            表和雷达开关来自 /comparisons。价目是 demo 输入（demoOnly），不是界面公式。没有 completedCycleMeanSec 时周期留空，不用等待均值填上。
           </p>
-          <button type="button" className="primary" onClick={() => void loadFailures()} disabled={busy}>
-            探测不支持项
+          <button type="button" className="primary" onClick={() => void onCostCompare()} disabled={busy || dirty || !sim}>
+            用当前跑次对比叉车加一
           </button>
-          <div className="failgrid">
-            {failures.map((card) => (
-              <article key={card.capability}>
-                <h3>{card.capability}</h3>
-                <p>
-                  {card.status} · {card.code}
+          {!compare ? <p>还没有比较。先在推演结果里跑完四卡。</p> : null}
+          {compare?.kpiFromUiDemo ? <p className="bad">接口标记了界面公式，这张表不能当结果。</p> : null}
+          {compare && !compare.kpiFromUiDemo ? (
+            <>
+              <p className="hint">
+                {compare.id} · {compare.mode}
+                {compare.radarEnabled ? " · 雷达已开" : " · 雷达关闭，只显示表格"}
+              </p>
+              <p className="hint">{compare.radarNote}</p>
+              {compare.issues.map((line) => (
+                <p key={line} className="warntext">
+                  {line}
                 </p>
-                <p>{card.message}</p>
-                <p className="hint">{card.correction}</p>
-                <p>score={card.score === null ? "null" : card.score} · horizonCost={String(card.horizonCost)}</p>
-              </article>
-            ))}
-          </div>
+              ))}
+              <table className="compare-table">
+                <thead>
+                  <tr>
+                    <th>方案</th>
+                    <th>库容</th>
+                    <th>周期 s</th>
+                    <th>吞吐</th>
+                    <th>等待 s</th>
+                    <th>初投</th>
+                    <th>成本</th>
+                    <th>资源</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {compare.rows.map((row) => (
+                    <tr key={`${row.runId ?? ""}-${row.label ?? ""}`}>
+                      <td>
+                        {row.label ?? "—"}
+                        <div className="hint">{row.layoutRevision}</div>
+                      </td>
+                      <td>{fmt(row.effectiveCapacity, 1)}</td>
+                      <td>{fmt(row.completedCycleMeanSec, 1)}</td>
+                      <td>{fmt(row.outboundThroughput, 3)}</td>
+                      <td>{fmt(row.waitMeanSec, 1)}</td>
+                      <td>{fmt(row.capex, 0)}</td>
+                      <td>{row.costStatus ?? "—"}</td>
+                      <td>{fingerprintText(row.resourceFingerprint)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {compare.radarEnabled
+                ? compare.series.map((series) => (
+                    <p key={series.entryId ?? series.label}>
+                      {series.label}：
+                      {(series.points ?? [])
+                        .map((point) => `${point.axisId}=${point.score === null ? "null" : point.score}`)
+                        .join(" · ")}
+                    </p>
+                  ))
+                : null}
+            </>
+          ) : null}
         </section>
       ) : null}
 

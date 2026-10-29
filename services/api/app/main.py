@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 app = FastAPI(
     title="simapp API",
-    version="0.3.5",
+    version="0.3.6",
     description=(
         "M5 recognition/advanced explicit unsupported paths; "
         "M4 cost/BOM/compare/report; M3 DES; M2 planning; M1 manual prepare."
@@ -228,6 +228,7 @@ def health() -> Dict[str, Any]:
             "nsga2Implemented": False,
             "lifecycleCostImplemented": False,
             "claimsUnimplementedM5": False,
+            "durableStore": STORE.persistence_info()["durable"],
             "recognition": {
                 "dxfVectorExtract": False,
                 "ocrAssist": False,
@@ -244,6 +245,7 @@ def health() -> Dict[str, Any]:
             },
         },
         "contractsRoot": str(ROOT / "contracts"),
+        "persistence": STORE.persistence_info(),
     }
 
 
@@ -251,6 +253,19 @@ def health() -> Dict[str, Any]:
 def create_project(body: CreateProjectRequest) -> Project:
     project = STORE.create_project(body.name, body.unitSystem)
     return Project(**project)
+
+
+@app.get("/api/v1/projects")
+def list_projects() -> Dict[str, Any]:
+    return {"items": STORE.list_projects(), "persistence": STORE.persistence_info()}
+
+
+@app.get("/api/v1/projects/{project_id}/workspace")
+def get_workspace(project_id: str) -> Dict[str, Any]:
+    doc = STORE.workspace(project_id)
+    if not doc:
+        raise _error("NOT_FOUND", f"project {project_id} not found", status=404)
+    return doc
 
 
 @app.get("/api/v1/projects/{project_id}")

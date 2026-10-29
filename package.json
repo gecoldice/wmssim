@@ -1,8 +1,8 @@
 {
   "name": "simapp",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
-  "description": "Warehouse layout planning + operations simulation (M5 workbench + explicit unsupported extensions)",
+  "description": "Warehouse layout planning + operations simulation (SQLite persistence + workbench cost compare)",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -16,6 +16,7 @@
     "test:m3": "PYTHONPATH=shared/python:services/api python3 scripts/run_m3_checks.py",
     "test:m4": "PYTHONPATH=shared/python:services/api python3 scripts/run_m4_checks.py",
     "test:m5": "PYTHONPATH=shared/python:services/api python3 scripts/run_m5_checks.py",
+    "test:persist": "PYTHONPATH=shared/python:services/api python3 scripts/run_persist_checks.py",
     "dev:api": "PYTHONPATH=shared/python uvicorn app.main:app --app-dir services/api --reload --host 127.0.0.1 --port 8000",
     "worker:ping": "PYTHONPATH=shared/python python3 services/worker/main.py --ping"
   }

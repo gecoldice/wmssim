@@ -122,6 +122,14 @@ button.lib small { color: var(--muted); }
   border-radius: 10px;
   padding: 0.9rem;
 }
+.compare-table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; background: var(--panel); }
+.compare-table th, .compare-table td {
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  padding: 0.45rem 0.4rem;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
 .kpi { font-size: 1.8rem; margin: 0.2rem 0; font-variant-numeric: tabular-nums; }
 .kpi.small { font-size: 1rem; word-break: break-all; }
 

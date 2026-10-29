@@ -261,6 +261,115 @@ export function templateElements(): PlacedElement[] {
   ];
 }
 
+/** 演示价目，只作为成本接口的输入。demoOnly 必须保持 true。 */
+export function demoPriceBook() {
+  return {
+    contractVersion: "0.3",
+    id: "pb-workbench",
+    revision: "pb-r1",
+    parentRef: null,
+    currency: "CNY",
+    demoOnly: true,
+    items: [
+      {
+        skuKey: "ST-PAL-01",
+        unitPrice: 12000,
+        unit: "ea",
+        status: "available",
+        source: "demo-catalog",
+        asOf: "2026-10-01",
+        taxInclusive: true,
+        specNote: "标准托盘货架段",
+      },
+      {
+        skuKey: "IN-DOCK-01",
+        unitPrice: 8000,
+        unit: "ea",
+        status: "available",
+        source: "demo-catalog",
+        asOf: "2026-10-01",
+        taxInclusive: true,
+        specNote: null,
+      },
+      {
+        skuKey: "OUT-DOCK-01",
+        unitPrice: 8000,
+        unit: "ea",
+        status: "available",
+        source: "demo-catalog",
+        asOf: "2026-10-01",
+        taxInclusive: true,
+        specNote: null,
+      },
+      {
+        skuKey: "resource:forklift",
+        unitPrice: 50000,
+        unit: "ea",
+        status: "available",
+        source: "demo-opex",
+        asOf: "2026-10-01",
+        taxInclusive: true,
+        specNote: "年租当量（demo）",
+      },
+      {
+        skuKey: "resource:operator",
+        unitPrice: 80000,
+        unit: "ea",
+        status: "available",
+        source: "demo-opex",
+        asOf: "2026-10-01",
+        taxInclusive: true,
+        specNote: "年人力（demo）",
+      },
+      {
+        skuKey: "relocate:ST-PAL-01",
+        unitPrice: 1500,
+        unit: "ea",
+        status: "available",
+        source: "demo-move",
+        asOf: "2026-10-01",
+        taxInclusive: true,
+        specNote: "货架搬移",
+      },
+    ],
+  };
+}
+
+export function demoCostBasis() {
+  return {
+    contractVersion: "0.3",
+    id: "cb-workbench",
+    revision: "cb-r1",
+    parentRef: null,
+    currency: "CNY",
+    horizonYears: 5,
+    includeInstallFee: true,
+    includeRelocateFee: true,
+    purchaseIncludesInstall: false,
+    feeSchedule: [
+      { kind: "install", rate: 1000, unit: "ea" },
+      { kind: "relocate", rate: 1500, unit: "ea" },
+    ],
+    fxRate: null,
+    notes: "工作台演示口径，不是供应商报价。购置与安装分列。",
+  };
+}
+
+export function demoScoreProfile() {
+  return {
+    contractVersion: "0.3",
+    id: "sp-workbench",
+    revision: "sp-r1",
+    parentRef: null,
+    locked: true,
+    axes: {
+      storage: { direction: "higher_better", bad: 10, good: 80, unit: "pallet_slots" },
+      efficiency: { direction: "lower_better", bad: 600, good: 60, unit: "s" },
+      investment: { direction: "lower_better", bad: 200000, good: 20000, unit: "CNY" },
+    },
+  };
+}
+
 export function elementsFromDocument(raw: unknown): PlacedElement[] {
   if (!raw || typeof raw !== "object") return [];
   const elements = (raw as { elements?: unknown }).elements;

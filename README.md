@@ -2,13 +2,14 @@
 
 工程根：`/Users/lovewinnie/wmssim/simapp`  
 方案权威：`/Users/lovewinnie/wmssim/simulation`（尤其 `04-总体与详细设计/` v0.3）  
-远程：本机没有可用的 `gh` 登录，仓库仍无 `origin`。
+远程：`https://github.com/gecoldice/wmssim.git`，分支 `cursor/m5-workbench-ui-5ace`。
 
-**当前阶段：M5 切片（工作台 + 扩展失败路径）** — 在 M1–M4 之上。
+**当前阶段：本地持久化 + 工作台成本对比** — 在 M1–M5 之上。
 
-- 工作台：左元素库 / 中画布 / 右参数。手动摆放 → 保存 → 校验并准备 → 跑 DES → 四卡。可选「帮我生成布局」。
-- 四卡、库容和成本只显示接口结果。不使用 `03-UI原型` 的演示公式。
-- DEV-15 识图（DXF / OCR / 多边形分区）与 DEV-16（NSGA-II、多目标、长期成本、扩容/运维量表、未校准自动化）**只返回失败或不支持**，不生成几何、分数或收益。
+- 项目、布局、准备结果、跑次、成本和比较写入 `data/simapp.sqlite`（SQLite）。重启 API 不丢。`SIMAPP_DB=off` 时测试仍用内存。
+- 工作台：左元素库 / 中画布 / 右参数。摆放或采用候选 → 保存 → 校验并准备 → DES 四卡 → 成本/对比（当前方案 vs 叉车加一，`whole_solution`）。
+- 四卡、库容、初投和对比表只显示接口结果。不使用 `03-UI原型` 的演示公式。价目是 `demoOnly` 输入。
+- DEV-15 识图（DXF / OCR / 多边形分区）与 DEV-16（NSGA-II、多目标、长期成本、扩容/运维量表、未校准自动化）仍只返回失败或不支持，本切片不再追加这类桩。
 
 > M3 DES 仍是运营效率证据。M2 `evaluationLevel=quick` 只是几何/路径估算。M4 缺价不排最低成本，缺轴不补分。
 
@@ -43,7 +44,8 @@ simapp/
 │   ├── simapp_des/ simapp_cost/ simapp_compare/
 │   └── simapp_extend/             # M5 失败/不支持路径
 ├── fixtures/{valid,invalid}/
-└── scripts/run_m1_checks.py … run_m5_checks.py
+├── data/simapp.sqlite            # 本地库（gitignore，运行 API 时生成）
+└── scripts/run_m1_checks.py … run_m5_checks.py、run_persist_checks.py
 ```
 
 ## 本地运行
@@ -68,6 +70,7 @@ npm run test:m2
 npm run test:m3
 npm run test:m4
 npm run test:m5
+npm run test:persist
 npm run build:web
 ```
 
@@ -80,16 +83,18 @@ npm run dev:api
 npm run dev:web
 ```
 
-- API：http://127.0.0.1:8000/api/v1/health （`milestone=M5`，识图/NSGA-II/长期成本为 false）
+- API：http://127.0.0.1:8000/api/v1/health （`milestone=M5`，`persistence.engine=sqlite`）
 - 工作台：http://127.0.0.1:5173
+- 数据库文件：`data/simapp.sqlite`（已 gitignore）。换路径：`SIMAPP_DB=/path/to/file.sqlite npm run dev:api`
 
 主路径：
 
-1. 「使用矩形模板」或从左侧点选设备再点画布。
+1. 「使用矩形模板」或从左侧点选设备再点画布。刷新后从 `GET /projects` + `GET /projects/{id}/workspace` 恢复最近的「工作台方案」。
 2. 「校验并准备」。未通过时右栏给出原因，不会启动推演。
 3. 「开始推演」。结果页四卡来自 `/simulation-jobs`。
-4. 「帮我生成布局」可选；采用后是新方案分支。quick 指标不是运营效率。
-5. 右栏「尝试识别」与「方案对比 → 探测不支持项」展示 M5 失败路径。
+4. 「估算成本并对比叉车加一」调用已有的价目、成本估算、再跑一版 DES，然后 `POST /comparisons`（`whole_solution`）。缺周期不补 0，雷达仅在接口 `radarEnabled` 时显示分数。
+5. 「帮我生成布局」可选；采用后是新方案分支。quick 指标不是运营效率。
+6. 右栏「尝试识别」仍是识图失败路径，不生成场地。
 
 ### 4. Worker
 
