@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/score-profile.json",
+  "title": "ScoreProfileRevision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "revision", "axes"],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "minLength": 1 },
+    "parentRef": { "type": ["object", "null"] },
+    "locked": {
+      "type": "boolean",
+      "description": "锁定后加入方案不改锚点/既有绝对分"
+    },
+    "axes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["direction", "bad", "good"],
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": ["higher_better", "lower_better"]
+          },
+          "bad": { "type": "number" },
+          "good": { "type": "number" },
+          "unit": { "type": "string" }
+        }
+      }
+    }
+  }
+}

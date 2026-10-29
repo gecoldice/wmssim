@@ -6,7 +6,8 @@
     "正例 expect=pass；反例 expect=fail 并声明失败原因类别。",
     "M1 派生/碰撞/窄通道/跨墙语义见 scripts/run_m1_checks.py（prepareExpect）。",
     "M2 规划/锁定/采用语义见 scripts/run_m2_checks.py。",
-    "M3 DES/四卡/回放见 scripts/run_m3_checks.py；KPI 由事件核对，非 UI 演示公式。"
+    "M3 DES/四卡/回放见 scripts/run_m3_checks.py；KPI 由事件核对，非 UI 演示公式。",
+    "M4 BOM/成本/比较见 scripts/run_m4_checks.py；缺价不排最低成本；缺轴不补零。"
   ],
   "entries": [
     {
@@ -221,6 +222,54 @@
       "schema": "v0.3/scenario-package.schema.json",
       "expect": "pass",
       "purpose": "M3 ScenarioPackage；metricDefinitionVersion=metrics-m3-v1"
+    },
+    {
+      "id": "FX-M4-PB-OK",
+      "path": "valid/fx-m4-price-book-complete.json",
+      "kind": "priceBook",
+      "schema": "v0.3/price-book.schema.json",
+      "expect": "pass",
+      "purpose": "完整价目（demo）；可参与最低成本排序"
+    },
+    {
+      "id": "FX-M4-PB-MISS",
+      "path": "valid/fx-m4-price-book-missing.json",
+      "kind": "priceBook",
+      "schema": "v0.3/price-book.schema.json",
+      "expect": "pass",
+      "purpose": "FX-10：货架缺价；不得排最低成本"
+    },
+    {
+      "id": "FX-M4-CB",
+      "path": "valid/fx-m4-cost-basis.json",
+      "kind": "costBasis",
+      "schema": "v0.3/cost-basis.schema.json",
+      "expect": "pass",
+      "purpose": "费用边界：安装/搬移分列"
+    },
+    {
+      "id": "FX-M4-SP",
+      "path": "valid/fx-m4-score-profile.json",
+      "kind": "scoreProfile",
+      "schema": "v0.3/score-profile.schema.json",
+      "expect": "pass",
+      "purpose": "M4 三轴锚点锁定（storage/efficiency/investment）"
+    },
+    {
+      "id": "FX-M4-REUSE",
+      "path": "valid/fx-m4-layout-reuse.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "purpose": "复用货架：新购=0，搬移分列"
+    },
+    {
+      "id": "FX-M4-OP-EXTRA",
+      "path": "valid/fx-m4-operating-extra-labor.json",
+      "kind": "operatingProfileRevision",
+      "schema": "v0.3/operating-profile-revision.schema.json",
+      "expect": "pass",
+      "purpose": "whole_solution：加人；layout_only 应判不可比"
     }
   ]
 }

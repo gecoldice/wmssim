@@ -1,0 +1,27 @@
+{
+  "contractVersion": "0.3",
+  "id": "sp-fx-m4",
+  "revision": "sp-r1",
+  "parentRef": null,
+  "locked": true,
+  "axes": {
+    "storage": {
+      "direction": "higher_better",
+      "bad": 10,
+      "good": 80,
+      "unit": "pallet_slots"
+    },
+    "efficiency": {
+      "direction": "lower_better",
+      "bad": 600,
+      "good": 60,
+      "unit": "s"
+    },
+    "investment": {
+      "direction": "lower_better",
+      "bad": 200000,
+      "good": 20000,
+      "unit": "CNY"
+    }
+  }
+}

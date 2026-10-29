@@ -1,0 +1,32 @@
+{
+  "contractVersion": "0.3",
+  "id": "op-fx-m4-extra",
+  "revision": "o-m4-extra-1",
+  "parentRef": null,
+  "resourcePools": [
+    {
+      "id": "pool-forklift",
+      "resourceType": "forklift",
+      "count": 1,
+      "capabilityRef": "cap-forklift-std",
+      "availableWindowSec": 3600,
+      "homeInstanceIds": []
+    },
+    {
+      "id": "pool-operator",
+      "resourceType": "operator",
+      "count": 2,
+      "capabilityRef": "cap-labor",
+      "availableWindowSec": 3600,
+      "homeInstanceIds": []
+    }
+  ],
+  "serviceParameters": {
+    "travelSpeedMps": 1.2,
+    "emptySpeedMps": 1.5,
+    "processSec": { "pick": 10, "ship": 5, "full_pallet": 10 }
+  },
+  "routingPolicy": { "kind": "shortest_path" },
+  "shiftWindow": { "startSec": 0, "endSec": 3600 },
+  "faults": []
+}

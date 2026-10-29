@@ -96,7 +96,25 @@ export type ErrorCode =
   | "PRICE_INCOMPLETE"
   | "SCORE_PROFILE_INVALID"
   | "COMPUTATION_FAILED"
-  | "NARROW_AISLE";
+  | "NARROW_AISLE"
+  | "LAYOUT_REVISION_MISMATCH"
+  | "NOT_SIMULATION_READY";
+
+export type ComparisonMode = "layout_only" | "whole_solution";
+
+export type CostEstimateStatus = "complete" | "incomplete";
+
+export type CostEstimateTotals = {
+  currency: string;
+  knownSubtotal: number;
+  complete: boolean;
+  capex?: number | null;
+  total?: number | null;
+  note?: string;
+};
+
+export const COST_ENGINE_VERSION = "m4-cost-0.1" as const;
+export const COMPARE_ENGINE_VERSION = "m4-compare-0.1" as const;
 
 export type ValidationStatus = "pass" | "warn" | "fail" | "unknown";
 

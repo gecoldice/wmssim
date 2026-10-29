@@ -14,7 +14,12 @@
     "operatingProfileRevision": "v0.3/operating-profile-revision.schema.json",
     "planningRequest": "v0.3/planning-request.schema.json",
     "scenarioPackage": "v0.3/scenario-package.schema.json",
-    "validationReport": "v0.3/validation-report.schema.json"
+    "validationReport": "v0.3/validation-report.schema.json",
+    "priceBook": "v0.3/price-book.schema.json",
+    "costBasis": "v0.3/cost-basis.schema.json",
+    "costEstimate": "v0.3/cost-estimate.schema.json",
+    "scoreProfile": "v0.3/score-profile.schema.json",
+    "comparisonSet": "v0.3/comparison-set.schema.json"
   },
   "openapi": "openapi/openapi.yaml",
   "coord": {
@@ -23,6 +28,6 @@
   },
   "notes": [
     "Do not import KPI formulas from 03-UI原型 HTML demos into the computation layer.",
-    "Gold-sample KPI assertions are deferred until DES engine exists; fixtures must not invent expected KPI."
+    "M4: incomplete CostEstimate must not enter lowest-cost ranking; missing radar axes must not zero-fill."
   ]
 }

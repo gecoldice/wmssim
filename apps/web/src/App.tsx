@@ -37,6 +37,17 @@ type SimResult = {
   warnings?: Array<{ code: string; message: string }>;
 };
 
+type CompareResult = {
+  costCompleteId?: string;
+  costIncompleteStatus?: string;
+  rankingWinner?: string;
+  rankingExcluded?: string[];
+  radarEnabled?: boolean;
+  comparisonMode?: string;
+  reportId?: string;
+  versionConsistent?: boolean;
+};
+
 const FX01_FACILITY = {
   contractVersion: "0.3",
   id: "facility-fx01",
@@ -254,6 +265,64 @@ const FX_M3_OPERATING = {
   faults: [{ faultType: "edge_block", enabled: true, startTime: 100, duration: 60 }],
 };
 
+const FX_M4_PB_OK = {
+  contractVersion: "0.3",
+  id: "pb-fx-m4",
+  revision: "pb-r1",
+  parentRef: null,
+  currency: "CNY",
+  demoOnly: true,
+  items: [
+    { skuKey: "ST-PAL-01", unitPrice: 12000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
+    { skuKey: "IN-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
+    { skuKey: "OUT-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
+    { skuKey: "resource:forklift", unitPrice: 50000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
+  ],
+};
+
+const FX_M4_PB_MISS = {
+  ...FX_M4_PB_OK,
+  id: "pb-fx-m4-missing",
+  revision: "pb-miss-1",
+  items: [
+    { skuKey: "ST-PAL-01", unitPrice: null, unit: "ea", status: "missing", source: null, asOf: null, taxInclusive: null, specNote: "缺价" },
+    { skuKey: "IN-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
+    { skuKey: "OUT-DOCK-01", unitPrice: 8000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
+    { skuKey: "resource:forklift", unitPrice: 50000, unit: "ea", status: "available", source: "demo", asOf: "2026-10-01", taxInclusive: true, specNote: null },
+  ],
+};
+
+const FX_M4_BASIS = {
+  contractVersion: "0.3",
+  id: "cb-fx-m4",
+  revision: "cb-r1",
+  parentRef: null,
+  currency: "CNY",
+  horizonYears: 5,
+  includeInstallFee: true,
+  includeRelocateFee: true,
+  purchaseIncludesInstall: false,
+  feeSchedule: [
+    { kind: "install", rate: 1000, unit: "ea" },
+    { kind: "relocate", rate: 1500, unit: "ea" },
+  ],
+  fxRate: null,
+  notes: "demo",
+};
+
+const FX_M4_SCORE = {
+  contractVersion: "0.3",
+  id: "sp-fx-m4",
+  revision: "sp-r1",
+  parentRef: null,
+  locked: true,
+  axes: {
+    storage: { direction: "higher_better", bad: 10, good: 80, unit: "pallet_slots" },
+    efficiency: { direction: "lower_better", bad: 600, good: 60, unit: "s" },
+    investment: { direction: "lower_better", bad: 200000, good: 20000, unit: "CNY" },
+  },
+};
+
 export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -261,6 +330,7 @@ export function App() {
   const [log, setLog] = useState<string>("");
   const [ready, setReady] = useState<PrepareResult | null>(null);
   const [sim, setSim] = useState<SimResult | null>(null);
+  const [compare, setCompare] = useState<CompareResult | null>(null);
 
   const sample = planeToWorld3d({ x: 12, y: 14, yawDeg: 30 }, 1.5);
 
@@ -615,12 +685,231 @@ export function App() {
     }
   }
 
+  async function runCostCompare() {
+    setBusy(true);
+    setError(null);
+    setCompare(null);
+    const lines: string[] = [];
+    try {
+      const pRes = await fetch("/api/v1/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "ui-m4", unitSystem: "metric" }),
+      });
+      const project = await pRes.json();
+      lines.push(`项目 ${project.id}`);
+
+      await fetch(`/api/v1/projects/${project.id}/facility-revisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ facility: FX01_FACILITY }),
+      });
+      await fetch(`/api/v1/layouts/${FX01_LAYOUT.id}/revisions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, baseRevision: null, document: FX01_LAYOUT }),
+      });
+      const vRes = await fetch(`/api/v1/projects/${project.id}/variants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "对比方案 A",
+          source: "manual",
+          layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
+        }),
+      });
+      const variant = await vRes.json();
+
+      const prepRes = await fetch(`/api/v1/layouts/${FX01_LAYOUT.id}/prepare-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
+          facilityRef: { id: FX01_FACILITY.id, revision: FX01_FACILITY.revision },
+          sync: true,
+        }),
+      });
+      if (!prepRes.ok) throw new Error(`prepare ${prepRes.status}`);
+      await fetch("/api/v1/demands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, demand: FX_M3_DEMAND }),
+      });
+      await fetch("/api/v1/operating-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, operating: FX_M3_OPERATING }),
+      });
+      const simRes = await fetch("/api/v1/simulation-jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: project.id,
+          variantRef: { id: variant.id, revision: variant.revision },
+          scenarioPackage: {
+            contractVersion: "0.3",
+            scenarioId: "ui-m4",
+            expectedLayoutRevision: FX01_LAYOUT.revision,
+            runControl: {
+              horizonSec: 3600,
+              seedStreams: { demand: 42, dispatch: 42 },
+              metricDefinitionVersion: "metrics-m3-v1",
+            },
+          },
+          demand: FX_M3_DEMAND,
+          operating: FX_M3_OPERATING,
+        }),
+      });
+      if (!simRes.ok) throw new Error(`sim ${simRes.status}: ${await simRes.text()}`);
+      const simBody = await simRes.json();
+      lines.push(`DES run ${simBody.runId} @ ${simBody.layoutRevision}`);
+
+      await fetch("/api/v1/price-books", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, priceBook: FX_M4_PB_OK }),
+      });
+      await fetch("/api/v1/price-books", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, priceBook: FX_M4_PB_MISS }),
+      });
+      await fetch("/api/v1/cost-bases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, costBasis: FX_M4_BASIS }),
+      });
+      await fetch("/api/v1/score-profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, scoreProfile: FX_M4_SCORE }),
+      });
+
+      const estOk = await (
+        await fetch("/api/v1/cost-estimate-jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            variantRef: { id: variant.id, revision: variant.revision },
+            priceBookRef: { id: FX_M4_PB_OK.id, revision: FX_M4_PB_OK.revision },
+            costBasisRef: { id: FX_M4_BASIS.id, revision: FX_M4_BASIS.revision },
+            operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
+          }),
+        })
+      ).json();
+      lines.push(
+        `完整成本 ${estOk.costEstimateId} status=${estOk.status} capex=${estOk.totals?.capex}`,
+      );
+
+      const estMiss = await (
+        await fetch("/api/v1/cost-estimate-jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            variantRef: { id: variant.id, revision: variant.revision },
+            priceBookRef: { id: FX_M4_PB_MISS.id, revision: FX_M4_PB_MISS.revision },
+            costBasisRef: { id: FX_M4_BASIS.id, revision: FX_M4_BASIS.revision },
+            operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
+          }),
+        })
+      ).json();
+      lines.push(
+        `缺价成本 ${estMiss.costEstimateId} status=${estMiss.status} total=${estMiss.totals?.total}（不可排最低）`,
+      );
+
+      const rank = await (
+        await fetch("/api/v1/cost-ranking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            costEstimateIds: [estMiss.costEstimateId, estOk.costEstimateId],
+          }),
+        })
+      ).json();
+      lines.push(`最低成本赢家 ${rank.winner?.estimateId}；排除 ${rank.excluded?.length ?? 0} 个缺价`);
+
+      const cmp = await (
+        await fetch("/api/v1/comparisons", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            mode: "layout_only",
+            commonBasis: { engineVersion: "m3-des-0.1" },
+            scoreProfileRef: { id: FX_M4_SCORE.id, revision: FX_M4_SCORE.revision },
+            entries: [
+              {
+                entryId: "complete",
+                label: "完整报价",
+                variantRef: { id: variant.id, revision: variant.revision },
+                layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
+                runId: simBody.runId,
+                costEstimateId: estOk.costEstimateId,
+                operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
+                completedCycleMeanSec: 120,
+              },
+              {
+                entryId: "missing",
+                label: "缺价",
+                variantRef: { id: variant.id, revision: variant.revision },
+                layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
+                costEstimateId: estMiss.costEstimateId,
+                operatingRef: { id: FX_M3_OPERATING.id, revision: FX_M3_OPERATING.revision },
+                completedCycleMeanSec: 110,
+              },
+            ],
+          }),
+        })
+      ).json();
+      lines.push(
+        `比较 radarEnabled=${cmp.comparison?.radar?.radarEnabled}（缺轴不补零；不足三轴仅表格）`,
+      );
+
+      const rpt = await (
+        await fetch("/api/v1/reports", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId: project.id,
+            variantRef: { id: variant.id, revision: variant.revision },
+            layoutRef: { id: FX01_LAYOUT.id, revision: FX01_LAYOUT.revision },
+            runId: simBody.runId,
+            costEstimateId: estOk.costEstimateId,
+            comparisonId: cmp.comparison?.id,
+          }),
+        })
+      ).json();
+      lines.push(`报告 ${rpt.reportId} versionConsistent=${rpt.versionConsistent}`);
+
+      setCompare({
+        costCompleteId: estOk.costEstimateId,
+        costIncompleteStatus: estMiss.status,
+        rankingWinner: rank.winner?.estimateId,
+        rankingExcluded: (rank.excluded || []).map((x: { estimateId: string }) => x.estimateId),
+        radarEnabled: cmp.comparison?.radar?.radarEnabled,
+        comparisonMode: cmp.comparison?.mode,
+        reportId: rpt.reportId,
+        versionConsistent: rpt.versionConsistent,
+      });
+      setLog(lines.join("\n"));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setLog(lines.join("\n"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="shell">
       <h1 className="brand">simapp</h1>
       <p className="lead">
-        仓库布局规划与运营推演 · M3 真实 DES。外层契约 {CONTRACT_VERSION}；Snapshot / equip{" "}
-        {SNAPSHOT_SCHEMA_VERSION} / {EQUIP_SCHEMA_VERSION}。主四卡由事件派生；回放绑历史布局修订。
+        仓库布局规划与运营推演 · M4 成本/对比闭环。外层契约 {CONTRACT_VERSION}；Snapshot / equip{" "}
+        {SNAPSHOT_SCHEMA_VERSION} / {EQUIP_SCHEMA_VERSION}。缺价不排最低成本；缺轴不补分；报告绑历史修订。
       </p>
       <div className="cta">
         <button type="button" onClick={pingApi} disabled={busy}>
@@ -635,6 +924,9 @@ export function App() {
         <button type="button" onClick={runPlanningAdopt} disabled={busy}>
           可选规划：生成并采用分支
         </button>
+        <button type="button" onClick={runCostCompare} disabled={busy}>
+          M4：成本估算与多方案对比
+        </button>
         <a className="note" href="http://127.0.0.1:8000/docs" target="_blank" rel="noreferrer">
           OpenAPI docs
         </a>
@@ -642,9 +934,9 @@ export function App() {
       <section className="panel">
         <dl className="meta">
           <dt>milestone</dt>
-          <dd>M3 · DEV-10–11</dd>
-          <dt>DES</dt>
-          <dd>只读 Snapshot；FIFO；最短路；库存守恒；faultInject/skillTags 忽略告警</dd>
+          <dd>M4 · DEV-12–14</dd>
+          <dt>成本/对比</dt>
+          <dd>BOM×价目；缺价 knownSubtotal；layout_only / whole_solution；雷达缺轴不补零</dd>
           <dt>3D map sample</dt>
           <dd>
             (12,14,yaw30) @1.5m → ({sample.position.x}, {sample.position.y}, {sample.position.z}),
@@ -684,9 +976,11 @@ export function App() {
             )}
           </pre>
         ) : null}
+        {compare ? <pre>{JSON.stringify(compare, null, 2)}</pre> : null}
         <p className="note">
           夹具：<code>npm run validate:fixtures</code> · M1：<code>npm run test:m1</code> · M2：
-          <code>npm run test:m2</code> · M3：<code>npm run test:m3</code>
+          <code>npm run test:m2</code> · M3：<code>npm run test:m3</code> · M4：
+          <code>npm run test:m4</code>
         </p>
       </section>
     </main>

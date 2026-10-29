@@ -1,0 +1,17 @@
+{
+  "contractVersion": "0.3",
+  "id": "cb-fx-m4",
+  "revision": "cb-r1",
+  "parentRef": null,
+  "currency": "CNY",
+  "horizonYears": 5,
+  "includeInstallFee": true,
+  "includeRelocateFee": true,
+  "purchaseIncludesInstall": false,
+  "feeSchedule": [
+    { "kind": "install", "rate": 1000, "unit": "ea" },
+    { "kind": "relocate", "rate": 1500, "unit": "ea" }
+  ],
+  "fxRate": null,
+  "notes": "首期规划估算口径；非供应商报价承诺。购置与安装分列。"
+}

@@ -160,7 +160,8 @@ def test_api_simulation_job() -> None:
     client = TestClient(app)
 
     h = client.get("/api/v1/health").json()
-    assert h["milestone"] == "M3"
+    assert h["milestone"] in {"M3", "M4"}
+    assert h["capabilities"]["des"] is True
     assert h["capabilities"]["des"] is True
     assert h["capabilities"]["kpiFromUiDemo"] is False
 

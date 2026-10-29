@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: simapp API
-  version: 0.3.3
+  version: 0.3.4
   description: |
     仓库布局规划与运营推演应用 API。
     外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
+    M4：BOM/成本（/cost-estimate-jobs）、比较（/comparisons）、报告（/reports）；
+    缺价不排最低成本；缺轴不补零；layout_only vs whole_solution。
     M3：真实 DES（/simulation-jobs、/runs）；四卡由事件派生；回放绑历史 layoutRevision。
     M2：场地确认、PlanningJob、基线规划（DEC-05）、候选采用/局部重排；
     M1 手动路径仍独立；禁止 UI 演示公式进入 KPI。
@@ -17,6 +19,9 @@ tags:
   - name: layouts
   - name: planning
   - name: simulation
+  - name: cost
+  - name: comparison
+  - name: reports
   - name: jobs
 paths:
   /health:
@@ -306,6 +311,104 @@ paths:
       responses:
         "200":
           description: latest job state
+  /price-books:
+    post:
+      tags: [cost]
+      summary: Save PriceBook revision
+      operationId: putPriceBook
+      responses:
+        "201":
+          description: saved
+  /cost-bases:
+    post:
+      tags: [cost]
+      summary: Save CostBasis revision
+      operationId: putCostBasis
+      responses:
+        "201":
+          description: saved
+  /score-profiles:
+    post:
+      tags: [comparison]
+      summary: Save ScoreProfile (anchors locked for absolute scores)
+      operationId: putScoreProfile
+      responses:
+        "201":
+          description: saved
+  /cost-estimate-jobs:
+    post:
+      tags: [cost]
+      summary: BOM × PriceBook → CostEstimate (incomplete blocks lowest-cost ranking)
+      operationId: createCostEstimateJob
+      responses:
+        "202":
+          description: estimate result (sync)
+  /cost-estimates/{estimateId}:
+    get:
+      tags: [cost]
+      summary: Get immutable CostEstimate
+      operationId: getCostEstimate
+      parameters:
+        - name: estimateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CostEstimate
+  /cost-ranking:
+    post:
+      tags: [cost]
+      summary: Lowest-capex among complete estimates only
+      operationId: rankCosts
+      responses:
+        "200":
+          description: ranking
+  /comparisons:
+    post:
+      tags: [comparison]
+      summary: Build ComparisonSet (layout_only | whole_solution); no implicit batch runs
+      operationId: createComparison
+      responses:
+        "201":
+          description: comparison + recommendations
+  /comparisons/{comparisonId}:
+    get:
+      tags: [comparison]
+      summary: Get ComparisonSet
+      operationId: getComparison
+      parameters:
+        - name: comparisonId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ComparisonSet
+  /reports:
+    post:
+      tags: [reports]
+      summary: Delivery HTML bound to historical layoutRevision / run
+      operationId: createReport
+      responses:
+        "201":
+          description: report
+  /reports/{reportId}:
+    get:
+      tags: [reports]
+      summary: Get delivery report
+      operationId: getReport
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: report
 components:
   parameters:
     projectId:
