@@ -13,7 +13,30 @@ export type BoxEl = {
   yawDeg: number;
   lengthM: number;
   widthM: number;
+  /** Fire lanes are occupancy zones: overlap is a warning, not a solid collision. */
+  fireZone?: boolean;
 };
+
+export type ColumnMark = { id: string; x: number; y: number; sizeM: number };
+
+/** Touching a column face counts as pressing it. */
+export const COLUMN_PRESS_GAP_M = 0.02;
+/** Spec pack: keep this gap off the column face. Geometry still allows a closer yellow drop. */
+export const COLUMN_SPEC_CLEAR_M = 0.6;
+/** Geometry floor when a device eats the aisle and does not declare its own minimum. */
+export const GEOMETRY_CLEAR_FLOOR_M = 1.2;
+/** Fire-egress pack: main aisle clear width. */
+export const FIRE_AISLE_MIN_M = 2.4;
+
+/** South band kept for the fire-egress pack. Not a solid and not a server obstacle. */
+export const FIRE_LANE: Aabb = { minX: 11.2, minY: 3.6, maxX: 16.8, maxY: 6.2 };
+
+export const DEFAULT_COLUMNS: ColumnMark[] = [
+  { id: "col-1", x: 13, y: 16, sizeM: 0.5 },
+  { id: "col-2", x: 3.2, y: 3.2, sizeM: 0.5 },
+  { id: "col-3", x: 22.5, y: 3.2, sizeM: 0.5 },
+  { id: "col-4", x: 37, y: 21, sizeM: 0.5 },
+];
 
 export type AisleLine = {
   fromX: number;
@@ -72,8 +95,48 @@ export function aabbOf(el: BoxEl): Aabb {
   return cornersAabb(footprintCorners(el.x, el.y, el.lengthM, el.widthM, el.yawDeg));
 }
 
-function intersects(a: Aabb, b: Aabb, eps = 1e-6): boolean {
+export function aabbHits(a: Aabb, b: Aabb, eps = 1e-6): boolean {
   return !(a.maxX <= b.minX + eps || b.maxX <= a.minX + eps || a.maxY <= b.minY + eps || b.maxY <= a.minY + eps);
+}
+
+function intersects(a: Aabb, b: Aabb, eps = 1e-6): boolean {
+  return aabbHits(a, b, eps);
+}
+
+export function columnBox(col: ColumnMark): Aabb {
+  const half = col.sizeM / 2;
+  return { minX: col.x - half, minY: col.y - half, maxX: col.x + half, maxY: col.y + half };
+}
+
+/** 0 when the boxes touch or overlap. Positive when a gap remains. */
+export function boxGap(a: Aabb, b: Aabb): number {
+  const dx = Math.max(b.minX - a.maxX, a.minX - b.maxX);
+  const dy = Math.max(b.minY - a.maxY, a.minY - b.maxY);
+  if (dx <= 0 && dy <= 0) return 0;
+  return Math.hypot(Math.max(dx, 0), Math.max(dy, 0));
+}
+
+export function fireLaneInside(width: number, height: number): Aabb | null {
+  if (FIRE_LANE.minX >= -1e-6 && FIRE_LANE.minY >= -1e-6 && FIRE_LANE.maxX <= width + 1e-6 && FIRE_LANE.maxY <= height + 1e-6) {
+    return FIRE_LANE;
+  }
+  return null;
+}
+
+/** Remaining vertical gap inside a horizontal aisle after this footprint clips it. */
+export function aisleRemainingClear(aisle: AisleLine, box: Aabb): number | null {
+  const band: Aabb = {
+    minX: Math.min(aisle.fromX, aisle.toX),
+    maxX: Math.max(aisle.fromX, aisle.toX),
+    minY: aisle.y - aisle.widthM / 2,
+    maxY: aisle.y + aisle.widthM / 2,
+  };
+  if (!intersects(box, band)) return null;
+  const coverLo = Math.max(band.minY, box.minY);
+  const coverHi = Math.min(band.maxY, box.maxY);
+  const below = Math.max(0, coverLo - band.minY);
+  const above = Math.max(0, band.maxY - coverHi);
+  return Math.max(below, above);
 }
 
 function inside(a: Aabb, b: Aabb, eps = 1e-6): boolean {
@@ -210,6 +273,10 @@ export function assessPlacement(input: {
   aisle: AisleLine | null;
   aisleWidthM: number | null;
   minClearWidthM?: number;
+  /** Docks and the fire lane itself may sit in the aisle. */
+  encroach?: boolean;
+  columns?: ColumnMark[];
+  fireLane?: Aabb | null;
   others: BoxEl[];
 }): Verdict {
   const { x, y, lengthM, widthM, yawDeg } = input;
@@ -222,8 +289,15 @@ export function assessPlacement(input: {
     return { tone: "red", reason: "占地超出场地边界。", access: null };
   }
   for (const other of input.others) {
+    if (other.fireZone) continue;
     if (intersects(box, aabbOf(other))) {
       return { tone: "red", reason: `与 ${other.instanceId} 占地重叠。`, access: null };
+    }
+  }
+  for (const col of input.columns ?? []) {
+    const gap = boxGap(box, columnBox(col));
+    if (gap <= COLUMN_PRESS_GAP_M) {
+      return { tone: "red", reason: `压住结构柱 ${col.id}，不能放下。挪开再松手。`, access: null };
     }
   }
   const access = projectAccess(x, y, input.aisle);
@@ -240,11 +314,31 @@ export function assessPlacement(input: {
   ) {
     return {
       tone: "red",
-      reason: `通道宽 ${input.aisleWidthM} 米，窄于这台设备要求的 ${input.minClearWidthM} 米。`,
+      reason: `通道净宽不足：现在 ${input.aisleWidthM} 米，这台设备至少要 ${input.minClearWidthM} 米。加宽通道后再放下。`,
       access,
     };
   }
+  if (input.encroach !== false && input.aisle) {
+    const remain = aisleRemainingClear(input.aisle, box);
+    const need = input.minClearWidthM ?? GEOMETRY_CLEAR_FLOOR_M;
+    if (remain !== null && remain + 1e-9 < need) {
+      return {
+        tone: "red",
+        reason: `通道净宽不足：放下后主通道只剩 ${remain.toFixed(1)} 米，至少要 ${need} 米。往通道外挪再松手。`,
+        access,
+      };
+    }
+  }
   const notes: string[] = [];
+  if (input.fireLane && intersects(box, input.fireLane)) {
+    notes.push("占住消防疏散带。勾选消防疏散并校核后不能推演");
+  }
+  for (const col of input.columns ?? []) {
+    const gap = boxGap(box, columnBox(col));
+    if (gap > COLUMN_PRESS_GAP_M && gap < COLUMN_SPEC_CLEAR_M) {
+      notes.push(`距结构柱 ${col.id} 只有 ${gap.toFixed(1)} 米`);
+    }
+  }
   if (access && access.dist > 5) notes.push(`距通道中心 ${access.dist.toFixed(1)} 米`);
   const edgePad = 0.35;
   if (
@@ -256,6 +350,7 @@ export function assessPlacement(input: {
     notes.push("贴近场地边界");
   }
   for (const other of input.others) {
+    if (other.fireZone) continue;
     if (intersects(grow(box, 0.3), aabbOf(other))) {
       notes.push(`与 ${other.instanceId} 间距小于 0.3 米`);
       break;

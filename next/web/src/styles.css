@@ -148,6 +148,21 @@ svg { display: block; }
 .panel-row h3 { font-size: 12px; margin: 0; font-weight: 730; }
 .mini-tag { font-size: 10px; color: #608a80; background: #eaf5f1; padding: 3px 6px; border-radius: 3px; }
 .mini-tag.amber { color: #a96b2c; background: #fff2e7; }
+.mini-tag.red { color: #a24b45; background: #fdeceb; }
+.fold-summary { cursor: pointer; }
+.fold-summary::-webkit-details-marker { display: none; }
+.fold-summary::marker { content: ""; }
+.fold-summary h3::before { content: "▾ "; color: #7d9391; font-weight: 500; }
+details:not([open]) .fold-summary h3::before { content: "▸ "; }
+.norm-summary { margin: 2px 0 4px; font-size: 12px; color: #334a4d; font-weight: 680; }
+.norm-note { margin: 0 0 8px; font-size: 11px; color: #6d8381; line-height: 1.45; }
+.pack-hint { font-size: 10px; color: #91a1a1; font-style: normal; }
+.norm-btn {
+  height: 34px; width: 100%; margin: 4px 0 8px; border: 0; border-radius: 4px;
+  font-weight: 700; color: #14584f; background: #e7f4ef;
+}
+.norm-btn:hover { background: #d7eee6; }
+.constraint .text-link { display: inline-block; margin-top: 6px; }
 .field { margin-bottom: 11px; }
 .field label { display: flex; align-items: center; justify-content: space-between; color: #6a7d7f; font-size: 11px; margin-bottom: 5px; }
 .field label small { font-size: 10px; color: #a1afaf; }

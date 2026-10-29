@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { Guide, Tone } from "./geom";
-import { footprintCorners, localToWorld } from "./geom";
+import type { ColumnMark, Guide, Tone } from "./geom";
+import { columnBox, fireLaneInside, footprintCorners, localToWorld } from "./geom";
 import { catalogItem } from "../library/catalog";
 import type { Actor } from "../run-cards/playback";
 import { trailOf, type Segment } from "../run-cards/playback";
@@ -24,6 +24,7 @@ type Ghost = {
   yawDeg: number;
   tone: Tone;
   label: string;
+  detail?: string;
 };
 
 type Props = {
@@ -41,6 +42,10 @@ type Props = {
   badge: string;
   interactive: boolean;
   ghost: Ghost | null;
+  columns: ColumnMark[];
+  alertColumnIds: string[];
+  aisleAlert: boolean;
+  fireLaneAlert: boolean;
   onSelect: (id: string | null) => void;
   onMove: (id: string, x: number, y: number, phase: "start" | "move" | "end") => void;
 };
@@ -83,6 +88,10 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
     badge,
     interactive,
     ghost,
+    columns,
+    alertColumnIds,
+    aisleAlert,
+    fireLaneAlert,
     onSelect,
     onMove,
   },
@@ -192,6 +201,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
   const aisleW = Number(draft.aisleWidthM);
   const showAisle = Number.isFinite(aisleY) && Number.isFinite(aisleFrom) && Number.isFinite(aisleTo);
   const barM = sized && width >= 20 ? 5 : 2;
+  const lane = sized ? fireLaneInside(width, height) : null;
 
   return (
     <div className="board-wrap">
@@ -228,9 +238,9 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                   y={aisleY - (Number.isFinite(aisleW) ? aisleW : 3) / 2}
                   width={Math.abs(aisleTo - aisleFrom)}
                   height={Number.isFinite(aisleW) ? aisleW : 3}
-                  fill="#ffffff"
-                  stroke="#d0dcda"
-                  strokeWidth={1 / cam.ppm}
+                  fill={aisleAlert ? "#fff5f3" : "#ffffff"}
+                  stroke={aisleAlert ? "#ce5d50" : "#d0dcda"}
+                  strokeWidth={(aisleAlert ? 2.4 : 1) / cam.ppm}
                 />
                 <line
                   x1={aisleFrom}
@@ -243,6 +253,59 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                 />
               </g>
             ) : null}
+            {lane ? (
+              <g pointerEvents="none">
+                <rect
+                  x={lane.minX}
+                  y={lane.minY}
+                  width={lane.maxX - lane.minX}
+                  height={lane.maxY - lane.minY}
+                  fill={fireLaneAlert ? "#f6d2cc" : "#f8ead2"}
+                  stroke={fireLaneAlert ? "#ce5d50" : "#d7b56a"}
+                  strokeWidth={(fireLaneAlert ? 2.2 : 1) / cam.ppm}
+                />
+                <g transform={`translate(${(lane.minX + lane.maxX) / 2} ${(lane.minY + lane.maxY) / 2}) scale(${1 / cam.ppm} ${-1 / cam.ppm})`}>
+                  <text textAnchor="middle" fill="#8a6230" fontSize={11}>
+                    疏散带
+                  </text>
+                </g>
+              </g>
+            ) : null}
+            {sized
+              ? columns.map((col) => {
+                  const box = columnBox(col);
+                  const alert = alertColumnIds.includes(col.id);
+                  return (
+                    <g key={col.id} pointerEvents="none">
+                      <rect
+                        x={box.minX}
+                        y={box.minY}
+                        width={col.sizeM}
+                        height={col.sizeM}
+                        fill={alert ? "#f6d5d0" : "#f3ead8"}
+                        stroke={alert ? "#ce5d50" : "#8a704c"}
+                        strokeWidth={(alert ? 2.4 : 1.2) / cam.ppm}
+                      />
+                      <line
+                        x1={box.minX}
+                        y1={col.y}
+                        x2={box.maxX}
+                        y2={col.y}
+                        stroke={alert ? "#ce5d50" : "#8a704c"}
+                        strokeWidth={1 / cam.ppm}
+                      />
+                      <line
+                        x1={col.x}
+                        y1={box.minY}
+                        x2={col.x}
+                        y2={box.maxY}
+                        stroke={alert ? "#ce5d50" : "#8a704c"}
+                        strokeWidth={1 / cam.ppm}
+                      />
+                    </g>
+                  );
+                })
+              : null}
             {guides.map((guide, index) => (
               <line
                 key={`g${index}`}
@@ -289,7 +352,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                 relief={relief}
                 ghost
                 label={ghost.label}
-                detail={ghost.tone === "green" ? "可放" : ghost.tone === "yellow" ? "注意" : "拒绝"}
+                detail={ghost.detail || (ghost.tone === "green" ? "可放" : ghost.tone === "yellow" ? "注意" : "拒绝")}
               />
             ) : null}
             {actors.map((actor) => {

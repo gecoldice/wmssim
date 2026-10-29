@@ -1,4 +1,5 @@
 import { copy } from "../copy";
+import { SPEC_PACKS, type NormFinding, type NormPhase, type SpecPackId } from "../prepare/norms";
 import type { Draft, PoseEl, ScenarioFields } from "../workbench/draft";
 import { parseNum } from "../workbench/draft";
 
@@ -16,6 +17,14 @@ type Props = {
   checks: Check[];
   prepareReady: boolean | null;
   onRecheck: () => void;
+  normPhase: NormPhase;
+  normSummary: string;
+  normNote: string;
+  specOn: Record<SpecPackId, boolean>;
+  findings: NormFinding[];
+  onToggleSpec: (id: SpecPackId, checked: boolean) => void;
+  onAudit: () => void;
+  onFix: (finding: NormFinding) => void;
 };
 
 export function InspectorPanel({
@@ -30,6 +39,14 @@ export function InspectorPanel({
   checks,
   prepareReady,
   onRecheck,
+  normPhase,
+  normSummary,
+  normNote,
+  specOn,
+  findings,
+  onToggleSpec,
+  onAudit,
+  onFix,
 }: Props) {
   const fails = checks.filter((check) => check.status === "fail");
   return (
@@ -203,32 +220,99 @@ export function InspectorPanel({
           />
         </section>
         <section className="panel-section">
-          <div className="panel-row">
-            <h3>约束与规范</h3>
-            <span className={`mini-tag${prepareReady === false ? " amber" : ""}`}>
-              {prepareReady === null ? "未准备" : prepareReady ? "已通过" : "未通过"}
-            </span>
-          </div>
-          {fails.length === 0 ? (
-            <div className="constraint">
-              <span>
-                <strong>{prepareReady ? "当前准备已通过" : "尚未做权威校验"}</strong>
-                碰撞、窄通道和跨墙由准备任务判定。
+          <details open>
+            <summary className="panel-row fold-summary">
+              <h3>约束与规范</h3>
+              <span className={`mini-tag${normPhase === "fail" ? " red" : normPhase === "stale" || prepareReady === false ? " amber" : ""}`}>
+                {normPhase === "fail" ? "硬冲突" : normPhase === "stale" ? "未校核" : prepareReady === null ? "未准备" : prepareReady ? "已通过" : "未通过"}
               </span>
-            </div>
-          ) : (
-            fails.map((check, index) => (
-              <div className="constraint error" key={index}>
+            </summary>
+            <p className="norm-summary">{normSummary}</p>
+            <p className="norm-note">{normNote}</p>
+            {SPEC_PACKS.map((pack) => (
+              <label className="toggle-line" key={pack.id}>
                 <span>
-                  <strong>{check.ruleId}</strong>
-                  {check.message} {(check.objectIds ?? []).join("、")}
+                  <input
+                    type="checkbox"
+                    data-pack={pack.id}
+                    checked={specOn[pack.id]}
+                    onChange={(event) => onToggleSpec(pack.id, event.target.checked)}
+                  />
+                  {pack.name}
+                </span>
+                <em className="pack-hint">{pack.hint}</em>
+              </label>
+            ))}
+            <label className="toggle-line">
+              <span>
+                <input type="checkbox" disabled checked={false} aria-label="空槽" />
+                空槽 · 可扩展规范包
+              </span>
+              <em className="pack-hint">未接入</em>
+            </label>
+            <button className="norm-btn" id="normAudit" type="button" onClick={onAudit}>
+              按规范校核
+            </button>
+            {normPhase === "stale" ? (
+              <div className="constraint warn">
+                <span>
+                  <strong>已选规范还没校核</strong>
+                  不能推演。点「按规范校核」，或取消勾选回到仅几何硬约束。
                 </span>
               </div>
-            ))
-          )}
-          <button className="text-link" type="button" onClick={onRecheck}>
-            重新校核
-          </button>
+            ) : null}
+            {normPhase === "off" ? (
+              <div className="constraint">
+                <span>
+                  <strong>未选，仅几何硬约束</strong>
+                  碰撞、超区、通道净宽和压柱仍会拒绝放下。
+                </span>
+              </div>
+            ) : null}
+            {normPhase === "pass" ? (
+              <div className="constraint">
+                <span>
+                  <strong>校核没有硬冲突</strong>
+                  可以进入推演。几何准备仍要单独通过。
+                </span>
+              </div>
+            ) : null}
+            {findings.map((finding) => (
+              <div className="constraint error" key={finding.id}>
+                <span>
+                  <strong>{finding.title}</strong>
+                  {finding.message}
+                  {finding.repair ? (
+                    <button className="text-link" type="button" onClick={() => onFix(finding)}>
+                      {finding.fixLabel}
+                    </button>
+                  ) : (
+                    <em className="pack-hint">请手动挪开。</em>
+                  )}
+                </span>
+              </div>
+            ))}
+            {fails.length === 0 ? (
+              <div className="constraint">
+                <span>
+                  <strong>{prepareReady ? "当前准备已通过" : "尚未做权威校验"}</strong>
+                  碰撞、窄通道和跨墙由准备任务判定。
+                </span>
+              </div>
+            ) : (
+              fails.map((check, index) => (
+                <div className="constraint error" key={`prep-${index}`}>
+                  <span>
+                    <strong>{check.ruleId}</strong>
+                    {check.message} {(check.objectIds ?? []).join("、")}
+                  </span>
+                </div>
+              ))
+            )}
+            <button className="text-link" type="button" onClick={onRecheck}>
+              重新校核
+            </button>
+          </details>
         </section>
       </div>
     </>

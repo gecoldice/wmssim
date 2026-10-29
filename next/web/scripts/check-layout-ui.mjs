@@ -1,8 +1,9 @@
 import { writeFileSync } from "node:fs";
-import { footprintCorners, assessPlacement, aabbOf } from "../src/canvas/geom.ts";
+import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE } from "../src/canvas/geom.ts";
 import { catalog } from "../src/library/catalog.ts";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
-import { MIXED_TEMPLATE_ID, asBox, buildFacility, buildLayout, draftFor } from "../src/workbench/draft.ts";
+import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
+import { MIXED_TEMPLATE_ID, asBox, buildFacility, buildLayout, columnsFor, draftFor, elementFromDrop, verdictFor } from "../src/workbench/draft.ts";
 
 const placeable = catalog.filter((item) => item.placeable);
 if (placeable.length !== 11) throw new Error(`expected 11 placeable, got ${placeable.length}`);
@@ -70,6 +71,54 @@ const far = assessPlacement({
   others: [],
 });
 if (far.tone !== "red" || !far.reason.includes("接入点")) throw new Error(far.reason);
+
+const blank = draftFor("blank");
+const blankNums = [blank.widthM, blank.heightM, blank.aisleWidthM, blank.aisleFromX, blank.aisleToX, blank.aisleY];
+if (blank.elements.length !== 0 || blank.templateId !== null) throw new Error("blank should stay empty of devices");
+if (blankNums.some((value) => !(Number(value) > 0))) throw new Error(`blank defaults missing ${blankNums.join(",")}`);
+const first = elementFromDrop([], "ST-PAL-01", 10, 16, null);
+if (first.lengthM !== 2.7 || first.widthM !== 1.2 || first.heightM !== 6) throw new Error("drop defaults");
+const seated = verdictFor(blank, first, null);
+if (seated.tone === "red") throw new Error(`blank first device refused: ${seated.reason}`);
+const narrow = verdictFor({ ...blank, aisleWidthM: "2" }, first, null);
+if (narrow.tone !== "red" || !narrow.reason.includes("净宽")) throw new Error(narrow.reason);
+const pressed = elementFromDrop([], "ST-PAL-01", 13, 16, null);
+const columnHit = verdictFor(blank, pressed, null);
+if (columnHit.tone !== "red" || !columnHit.reason.includes("结构柱")) throw new Error(columnHit.reason);
+
+for (const el of draft.elements) {
+  if (aabbHits(aabbOf(asBox(el)), FIRE_LANE)) throw new Error(`template sits on fire lane ${el.instanceId}`);
+  for (const col of columnsFor(draft)) {
+    const gap = boxGap(aabbOf(asBox(el)), columnBox(col));
+    if (gap < 0.6) throw new Error(`template ${el.instanceId} gap ${gap} to ${col.id}`);
+  }
+}
+const clean = auditNorms(draft, ["fire-egress", "structure-bay"]);
+if (clean.length) throw new Error(`template spec ${JSON.stringify(clean.map((row) => row.message))}`);
+if (normSummary("off", [], 0) !== "未选，仅几何硬约束") throw new Error(normSummary("off", [], 0));
+if (!normNote("off", []).includes("不能当成消防合规")) throw new Error(normNote("off", []));
+
+const laneCenter = { x: (FIRE_LANE.minX + FIRE_LANE.maxX) / 2, y: (FIRE_LANE.minY + FIRE_LANE.maxY) / 2 };
+const occupier = elementFromDrop(draft.elements, "OUT-PACK-01", laneCenter.x, laneCenter.y, null);
+const occupied = verdictFor(draft, occupier, null);
+if (occupied.tone === "red") throw new Error(`fire lane drop refused: ${occupied.reason}`);
+const occupiedDraft = { ...draft, elements: [...draft.elements, occupier] };
+const occupiedHits = auditNorms(occupiedDraft, ["fire-egress"]);
+const occupy = occupiedHits.find((row) => row.ruleId === "FIRE_OCCUPANCY");
+if (!occupy) throw new Error(`expected fire occupancy, got ${JSON.stringify(occupiedHits.map((row) => row.ruleId))}`);
+const repaired = applyNormFix(occupiedDraft, occupy);
+const after = auditNorms(repaired, ["fire-egress"]);
+if (after.some((row) => row.ruleId === "FIRE_OCCUPANCY")) throw new Error(`repair left occupancy ${JSON.stringify(after)}`);
+
+const near = structuredClone(draft);
+const nearRack = near.elements.find((el) => el.instanceId === "rack-001");
+nearRack.x = 11.2;
+const columnFindings = auditNorms(near, ["structure-bay"]);
+if (!columnFindings.some((row) => row.ruleId === "COLUMN_PRESS")) throw new Error("expected column press");
+const columnFixed = applyNormFix(near, columnFindings[0]);
+if (auditNorms(columnFixed, ["structure-bay"]).some((row) => row.id === columnFindings[0].id)) {
+  throw new Error("column repair did not clear the finding");
+}
 
 const segments = [
   { t0: 0, t1: 10, fromPose: { x: 0, y: 0 }, toPose: { x: 10, y: 0 }, resourceId: "forklift-1", taskId: "T1" },

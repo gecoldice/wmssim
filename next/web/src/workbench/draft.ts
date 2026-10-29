@@ -1,6 +1,15 @@
 /** Shared document builders. Blank, rectangle, and mixed starts all use these functions. */
 
-import { assessPlacement, projectAccess, type AisleLine, type BoxEl } from "../canvas/geom";
+import {
+  assessPlacement,
+  columnBox,
+  DEFAULT_COLUMNS,
+  fireLaneInside,
+  projectAccess,
+  type AisleLine,
+  type BoxEl,
+  type ColumnMark,
+} from "../canvas/geom";
 import { catalogItem, isPlaceable, type CatalogItem } from "../library/catalog";
 
 export const MIXED_TEMPLATE_ID = "template.mixed_wh_v0";
@@ -84,30 +93,21 @@ const PREFIX: Record<PlaceableType, string> = {
   "AUX-WALL-01": "wall",
 };
 
+/** Starter meters so a blank sheet can take the first device without typing six sizes. */
+export function siteDefaults(): Pick<Draft, "widthM" | "heightM" | "aisleWidthM" | "aisleFromX" | "aisleToX" | "aisleY"> {
+  return {
+    widthM: "40",
+    heightM: "24",
+    aisleWidthM: "3.5",
+    aisleFromX: "2",
+    aisleToX: "38",
+    aisleY: "12",
+  };
+}
+
 export function draftFor(mode: "blank" | "rectangle" | "mixed"): Draft {
   if (mode === "mixed") return mixedWarehouse();
-  if (mode === "rectangle") {
-    return {
-      templateId: null,
-      widthM: "40",
-      heightM: "24",
-      aisleWidthM: "3.5",
-      aisleFromX: "2",
-      aisleToX: "38",
-      aisleY: "12",
-      elements: [],
-    };
-  }
-  return {
-    templateId: null,
-    widthM: "",
-    heightM: "",
-    aisleWidthM: "",
-    aisleFromX: "",
-    aisleToX: "",
-    aisleY: "",
-    elements: [],
-  };
+  return { templateId: null, ...siteDefaults(), elements: [] };
 }
 
 function shell(partial: Omit<PoseEl, "accessNodeId" | "accessX" | "accessY">): PoseEl {
@@ -150,12 +150,7 @@ function fromCatalog(
 function mixedWarehouse(): Draft {
   const draft: Draft = {
     templateId: MIXED_TEMPLATE_ID,
-    widthM: "40",
-    heightM: "24",
-    aisleWidthM: "3.5",
-    aisleFromX: "2",
-    aisleToX: "38",
-    aisleY: "12",
+    ...siteDefaults(),
     elements: [
       fromCatalog("dock-in", "IN-DOCK-01", 4, 12),
       fromCatalog("dock-out", "OUT-DOCK-01", 36, 12),
@@ -172,6 +167,18 @@ function mixedWarehouse(): Draft {
     ],
   };
   return rebindAccess(draft).draft;
+}
+
+const AISLE_FACE = new Set(["IN-DOCK-01", "OUT-DOCK-01", "AUX-FIRE-01"]);
+
+export function columnsFor(draft: Draft): ColumnMark[] {
+  const width = parseNum(draft.widthM);
+  const height = parseNum(draft.heightM);
+  if (width === null || height === null || width <= 0 || height <= 0) return [];
+  return DEFAULT_COLUMNS.filter((col) => {
+    const box = columnBox(col);
+    return box.minX >= -1e-6 && box.minY >= -1e-6 && box.maxX <= width + 1e-6 && box.maxY <= height + 1e-6;
+  });
 }
 
 export function aisleOf(draft: Draft): AisleLine | null {
@@ -213,6 +220,8 @@ export function rebindAccess(draft: Draft): { draft: Draft; lost: string[] } {
 
 export function verdictFor(draft: Draft, el: PoseEl, ignoreId: string | null) {
   const spec = catalogItem(el.typeElementId);
+  const width = parseNum(draft.widthM);
+  const height = parseNum(draft.heightM);
   return assessPlacement({
     x: el.x,
     y: el.y,
@@ -221,12 +230,17 @@ export function verdictFor(draft: Draft, el: PoseEl, ignoreId: string | null) {
     yawDeg: el.yawDeg,
     accessRequired: Boolean(spec?.accessRequired),
     storageCopy: el.typeElementId === "ST-PAL-01" || el.typeElementId === "ST-FLOOR-01",
-    facilityW: parseNum(draft.widthM),
-    facilityH: parseNum(draft.heightM),
+    facilityW: width,
+    facilityH: height,
     aisle: aisleOf(draft),
     aisleWidthM: parseNum(draft.aisleWidthM),
     minClearWidthM: el.minClearWidthM,
-    others: draft.elements.filter((item) => item.instanceId !== ignoreId && item.instanceId !== el.instanceId).map(asBox),
+    encroach: !AISLE_FACE.has(el.typeElementId),
+    columns: columnsFor(draft),
+    fireLane: width !== null && height !== null ? fireLaneInside(width, height) : null,
+    others: draft.elements
+      .filter((item) => item.instanceId !== ignoreId && item.instanceId !== el.instanceId)
+      .map((item) => ({ ...asBox(item), fireZone: item.typeElementId === "AUX-FIRE-01" })),
   });
 }
 

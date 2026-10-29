@@ -19,6 +19,17 @@ import { LibraryPanel } from "../library/LibraryPanel";
 import { catalogItem, isPlaceable, type CatalogGroup } from "../library/catalog";
 import { readAccepted, rememberAccepted } from "../persist/lastAccepted.js";
 import { PreparePanel } from "../prepare/PreparePanel";
+import {
+  SPEC_PACKS,
+  applyNormFix,
+  auditNorms,
+  normKeyOf,
+  normNote,
+  normSummary,
+  type NormFinding,
+  type NormPhase,
+  type SpecPackId,
+} from "../prepare/norms";
 import { acceptRun, staleMessage } from "../run-cards/format.js";
 import { actorsAt, segmentBounds, type Segment } from "../run-cards/playback";
 import { RunCards } from "../run-cards/RunCards";
@@ -36,6 +47,7 @@ import {
   horizonSec,
   missingScenario,
   parseNum,
+  columnsFor,
   rebindAccess,
   scenarioKey,
   specOf,
@@ -61,6 +73,7 @@ type Ghost = {
   yawDeg: number;
   tone: Tone;
   label: string;
+  detail?: string;
 };
 
 function textOf(data: Record<string, unknown> | undefined): string {
@@ -139,6 +152,8 @@ export function Workbench() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | CatalogGroup>("all");
   const [prepare, setPrepare] = useState<{ ready: boolean; checks: Check[]; snapshot: Record<string, unknown> | null } | null>(null);
+  const [specOn, setSpecOn] = useState<Record<SpecPackId, boolean>>({ "fire-egress": false, "structure-bay": false });
+  const [normAudit, setNormAudit] = useState<{ key: string; findings: NormFinding[] } | null>(null);
   const [run, setRun] = useState<Record<string, unknown> | null>(null);
   const [bound, setBound] = useState<Bound | null>(null);
   const [rejected, setRejected] = useState<string | null>(null);
@@ -155,6 +170,7 @@ export function Workbench() {
   const [guides, setGuides] = useState<Guide[]>([]);
   const [liveTone, setLiveTone] = useState<{ id: string; tone: Tone } | null>(null);
   const dragOrigin = useRef<Draft | null>(null);
+  const readyHold = useRef<{ key: string; value: { ready: boolean; checks: Check[]; snapshot: Record<string, unknown> | null } } | null>(null);
   const dragRef = useRef<{ id: PlaceableType; x: number; y: number; moved: boolean } | null>(null);
   const canvasRef = useRef<CanvasHandle>(null);
 
@@ -167,19 +183,26 @@ export function Workbench() {
   const horizon = Number((run?.trajectory as { horizonSec?: number } | undefined)?.horizonSec ?? 0);
   const bounds = useMemo(() => segmentBounds(segments, horizon), [segments, horizon]);
   const actors = useMemo(() => (mode === "decision" ? actorsAt(segments, simT) : []), [mode, segments, simT]);
+  const selectedPacks = SPEC_PACKS.filter((pack) => specOn[pack.id]).map((pack) => pack.id);
+  const normKey = normKeyOf(draft, selectedPacks);
+  const normFresh = normAudit?.key === normKey;
+  const findings = normFresh ? normAudit.findings : [];
+  const normPhase: NormPhase = selectedPacks.length === 0 ? "off" : !normFresh ? "stale" : findings.length ? "fail" : "pass";
 
   function note(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(""), 3200);
   }
 
-  function replaceDraft(next: Draft, recordHistory: boolean) {
+  function publishDraft(next: Draft, recordHistory: boolean) {
     if (recordHistory) {
       setPast((items) => [...items, structuredClone(draft)].slice(-30));
       setFuture([]);
     }
     setDraft(next);
-    setPrepare(null);
+    const key = JSON.stringify(next);
+    if (readyHold.current?.key === key) setPrepare(readyHold.current.value);
+    else setPrepare(null);
   }
 
   function previewDrop(type: PlaceableType, clientX: number, clientY: number) {
@@ -267,6 +290,7 @@ export function Workbench() {
     setPast([]);
     setFuture([]);
     setSavedKey(null);
+    readyHold.current = null;
     setPrepare(null);
     setSelected(null);
     setGhost(null);
@@ -279,7 +303,9 @@ export function Workbench() {
       const previous = items[items.length - 1];
       setFuture((queue) => [draft, ...queue]);
       setDraft(previous);
-      setPrepare(null);
+      const key = JSON.stringify(previous);
+      if (readyHold.current?.key === key) setPrepare(readyHold.current.value);
+      else setPrepare(null);
       return items.slice(0, -1);
     });
   }
@@ -290,7 +316,9 @@ export function Workbench() {
       const next = items[0];
       setPast((queue) => [...queue, draft]);
       setDraft(next);
-      setPrepare(null);
+      const key = JSON.stringify(next);
+      if (readyHold.current?.key === key) setPrepare(readyHold.current.value);
+      else setPrepare(null);
       return items.slice(1);
     });
   }
@@ -308,7 +336,7 @@ export function Workbench() {
         return;
       }
     }
-    replaceDraft(rebound.draft, true);
+    publishDraft(rebound.draft, true);
   }
 
   function applyElement(patch: Partial<PoseEl>) {
@@ -329,7 +357,7 @@ export function Workbench() {
       accessX: verdict.access?.x ?? null,
       accessY: verdict.access?.y ?? null,
     };
-    replaceDraft(
+    publishDraft(
       { ...draft, elements: draft.elements.map((el) => (el.instanceId === stored.instanceId ? stored : el)) },
       true,
     );
@@ -364,6 +392,7 @@ export function Workbench() {
       const layoutRef = saved.data.layoutRef as { revision: string };
       setLayoutRev(layoutRef.revision);
       setSavedKey(JSON.stringify(draft));
+      readyHold.current = null;
       setPrepare(null);
       rememberAccepted(localStorage, { projectId: pid, layoutId: lid });
       note(copy.saved);
@@ -391,7 +420,9 @@ export function Workbench() {
         snapshot?: Record<string, unknown>;
       };
       const checks = result.validationReport?.checks ?? [];
-      setPrepare({ ready: Boolean(result.simulationReady), checks, snapshot: result.snapshot ?? null });
+      const nextPrepare = { ready: Boolean(result.simulationReady), checks, snapshot: result.snapshot ?? null };
+      setPrepare(nextPrepare);
+      readyHold.current = nextPrepare.ready ? { key: JSON.stringify(draft), value: nextPrepare } : null;
       note(result.simulationReady ? "准备通过，可以推演" : copy.validationFail);
     } catch (error) {
       note(`${copy.validationFail} ${error instanceof Error ? error.message : ""}`);
@@ -400,7 +431,45 @@ export function Workbench() {
     }
   }
 
+  function onAudit() {
+    if (!selectedPacks.length) {
+      note("还没勾选规范包。当前只做几何硬约束，不能据此说消防合规。");
+      return;
+    }
+    const next = auditNorms(draft, selectedPacks);
+    setNormAudit({ key: normKey, findings: next });
+    note(next.length ? `校核有 ${next.length} 条硬冲突，不能推演。` : "规范校核没有硬冲突。");
+  }
+
+  function onFix(finding: NormFinding) {
+    const next = applyNormFix(draft, finding);
+    const rebound = rebindAccess(next);
+    for (const el of rebound.draft.elements) {
+      const verdict = verdictFor(rebound.draft, el, el.instanceId);
+      if (verdict.tone === "red") {
+        note(verdict.reason);
+        return;
+      }
+    }
+    publishDraft(rebound.draft, true);
+    const nextFindings = auditNorms(rebound.draft, selectedPacks);
+    setNormAudit({ key: normKeyOf(rebound.draft, selectedPacks), findings: nextFindings });
+    note(
+      nextFindings.length
+        ? "这处已经挪开，还有别的硬冲突。"
+        : "已按建议改开，规范硬冲突没有了。布局若变了，保存并准备后才能推演。",
+    );
+  }
+
   async function onRun() {
+    if (normPhase === "stale") {
+      note("已选规范包还没校核，不能推演。");
+      return;
+    }
+    if (normPhase === "fail") {
+      note("规范有硬冲突，不能推演。取消勾选，或按建议修好再校核。");
+      return;
+    }
     if (!layoutRev || !prepare?.ready || dirty) {
       note(copy.needPrepare);
       return;
@@ -453,16 +522,37 @@ export function Workbench() {
     }
   }
 
+  function warnIfSoft(reason: string, tone: Tone) {
+    if (tone === "yellow" && (reason.includes("消防") || reason.includes("结构柱"))) note(reason);
+  }
+
   const layoutChanged = Boolean(run && bound && layoutRev && bound.layoutRevision !== layoutRev);
   const demandChanged = Boolean(run && bound && bound.outbound !== scenario.outbound);
   const scenarioChanged = Boolean(run && bound && bound.scenarioKey !== scenarioKey(scenario));
   const stale = run ? staleMessage({ layoutChanged, demandChanged, scenarioChanged }) : null;
-  const conflictIds = (prepare?.checks ?? [])
+  const prepareIds = (prepare?.checks ?? [])
     .filter((check) => check.status === "fail")
     .flatMap((check) => check.objectIds ?? [])
     .filter((id) => draft.elements.some((el) => el.instanceId === id));
-  const statusText = conflictIds.length ? "硬冲突" : dirty || !layoutRev ? "未保存" : prepare?.ready ? "可推演" : prepare ? "准备未通过" : "未准备";
-  const statusClass = conflictIds.length || (prepare && !prepare.ready) ? "status-pill error" : statusText === "可推演" ? "status-pill" : "status-pill warn";
+  const conflictIds = [...new Set([...prepareIds, ...findings.flatMap((finding) => finding.objectIds)].filter((id) => draft.elements.some((el) => el.instanceId === id)))];
+  const alertColumnIds = [...new Set(findings.flatMap((finding) => finding.columnIds))];
+  const aisleAlert = findings.some((finding) => finding.aisle);
+  const fireLaneAlert = findings.some((finding) => finding.fireLane);
+  const hardCount = new Set([...prepareIds, ...findings.flatMap((finding) => finding.objectIds)]).size;
+  const statusText =
+    normPhase === "fail" || conflictIds.length
+      ? "硬冲突"
+      : normPhase === "stale"
+        ? "规范未校核"
+        : dirty || !layoutRev
+          ? "未保存"
+          : prepare?.ready
+            ? "可推演"
+            : prepare
+              ? "准备未通过"
+              : "未准备";
+  const statusClass =
+    normPhase === "fail" || conflictIds.length || (prepare && !prepare.ready) ? "status-pill error" : statusText === "可推演" ? "status-pill" : "status-pill warn";
   const widthLabel = draft.widthM && draft.heightM ? `${draft.widthM} × ${draft.heightM} m` : copy.missing;
   const badge = stale
     ? stale
@@ -489,6 +579,10 @@ export function Workbench() {
       badge={badge}
       interactive={mode === "edit"}
       ghost={ghost}
+      columns={columnsFor(draft)}
+      alertColumnIds={alertColumnIds}
+      aisleAlert={aisleAlert}
+      fireLaneAlert={fireLaneAlert}
       onSelect={setSelected}
       onMove={(id, x, y, phase) => {
         const current = (dragOrigin.current ?? draft).elements.find((el) => el.instanceId === id) ?? draft.elements.find((el) => el.instanceId === id);
@@ -533,14 +627,18 @@ export function Workbench() {
           dragOrigin.current = null;
           return;
         }
-        setDraft((now) => ({ ...now, elements: now.elements.map((el) => (el.instanceId === id ? stored : el)) }));
+        warnIfSoft(verdict.reason, verdict.tone);
+        const movedDraft = { ...draft, elements: draft.elements.map((el) => (el.instanceId === id ? stored : el)) };
+        setDraft(movedDraft);
         if (dragOrigin.current) {
           const origin = dragOrigin.current;
           const moved = origin.elements.some((el) => el.instanceId === id && (el.x !== stored.x || el.y !== stored.y));
           if (moved) {
             setPast((items) => [...items, origin].slice(-30));
             setFuture([]);
-            setPrepare(null);
+            const key = JSON.stringify(movedDraft);
+            if (readyHold.current?.key === key) setPrepare(readyHold.current.value);
+            else setPrepare(null);
           }
         }
         dragOrigin.current = null;
@@ -634,6 +732,7 @@ export function Workbench() {
                 yawDeg: preview.spec.orientationDeg,
                 tone: preview.verdict.tone,
                 label: preview.spec.name,
+                detail: preview.verdict.tone === "green" ? "可放" : preview.verdict.reason,
               });
             }}
             onDragEnd={(id, clientX, clientY) => {
@@ -656,8 +755,9 @@ export function Workbench() {
                 note(preview.verdict.reason);
                 return;
               }
+              warnIfSoft(preview.verdict.reason, preview.verdict.tone);
               const element = elementFromDrop(draft.elements, drag.id, preview.snapped.x, preview.snapped.y, preview.verdict.access);
-              replaceDraft({ ...draft, elements: [...draft.elements, element] }, true);
+              publishDraft({ ...draft, elements: [...draft.elements, element] }, true);
               setSelected(element.instanceId);
             }}
           />
@@ -705,7 +805,7 @@ export function Workbench() {
                 货架 <strong>{draft.elements.filter((el) => el.typeElementId === "ST-PAL-01").length}</strong>
               </span>
               <span className="stat">
-                硬冲突 <strong>{conflictIds.length}</strong>
+                硬冲突 <strong>{hardCount}</strong>
               </span>
               <span className="stat">
                 布局修订 <strong>{layoutRev ?? copy.notIssued}</strong>
@@ -728,6 +828,14 @@ export function Workbench() {
               checks={prepare?.checks ?? []}
               prepareReady={prepare ? prepare.ready : null}
               onRecheck={() => void onPrepare()}
+              normPhase={normPhase}
+              normSummary={normSummary(normPhase, selectedPacks, findings.length)}
+              normNote={normNote(normPhase, selectedPacks)}
+              specOn={specOn}
+              findings={findings}
+              onToggleSpec={(id, checked) => setSpecOn((current) => ({ ...current, [id]: checked }))}
+              onAudit={onAudit}
+              onFix={onFix}
             />
             <PreparePanel
               busy={busy}
@@ -736,7 +844,7 @@ export function Workbench() {
               onPrepare={() => void onPrepare()}
               onDelete={() => {
                 if (!selected) return;
-                replaceDraft({ ...draft, elements: draft.elements.filter((el) => el.instanceId !== selected) }, true);
+                publishDraft({ ...draft, elements: draft.elements.filter((el) => el.instanceId !== selected) }, true);
                 setSelected(null);
               }}
               onRun={() => void onRun()}
