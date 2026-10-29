@@ -15,6 +15,7 @@ htmlcov/
 .env.*
 !.env.example
 .vite/
+*.tsbuildinfo
 *.log
 .idea/
 .vscode/
