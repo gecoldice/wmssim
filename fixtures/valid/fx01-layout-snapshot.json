@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "0.2",
+  "layoutId": "layout-fx01",
+  "layoutRevision": "rev-fx01-a",
+  "exportedAt": "2026-10-29T01:00:00+08:00",
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m",
+    "yawZero": "+X"
+  },
+  "elements": [
+    {
+      "elementId": "n-recv",
+      "kind": "node",
+      "pose": { "x": 2, "y": 12 },
+      "footprint": { "w": 0.1, "d": 0.1 }
+    },
+    {
+      "elementId": "n-aisle-1",
+      "kind": "node",
+      "pose": { "x": 12, "y": 12 },
+      "footprint": { "w": 0.1, "d": 0.1 }
+    },
+    {
+      "elementId": "n-ship",
+      "kind": "node",
+      "pose": { "x": 38, "y": 12 },
+      "footprint": { "w": 0.1, "d": 0.1 }
+    },
+    {
+      "elementId": "dock-recv",
+      "typeElementId": "IN-DOCK-01",
+      "kind": "dock",
+      "pose": { "x": 1, "y": 12, "yawDeg": 0 },
+      "footprint": { "w": 3, "d": 4 },
+      "labels": ["recv"],
+      "accessNodeId": "n-recv"
+    },
+    {
+      "elementId": "dock-ship",
+      "typeElementId": "OUT-DOCK-01",
+      "kind": "dock",
+      "pose": { "x": 39, "y": 12, "yawDeg": 180 },
+      "footprint": { "w": 3, "d": 4 },
+      "labels": ["ship"],
+      "accessNodeId": "n-ship"
+    },
+    {
+      "elementId": "rack-001",
+      "typeElementId": "ST-PAL-01",
+      "kind": "slot",
+      "pose": { "x": 12, "y": 14, "yawDeg": 0 },
+      "footprint": { "w": 2.7, "d": 1.2 },
+      "labels": ["bulk"],
+      "accessNodeId": "n-aisle-1",
+      "capacityPallets": 8,
+      "zone": "storage"
+    },
+    {
+      "elementId": "device-fork-home",
+      "typeElementId": "MH-HAND-01",
+      "kind": "device",
+      "pose": { "x": 4, "y": 12 },
+      "footprint": { "w": 1.2, "d": 2 },
+      "accessNodeId": "n-recv",
+      "resourceHome": true
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "e-recv-aisle",
+      "from": "n-recv",
+      "to": "n-aisle-1",
+      "lengthM": 10,
+      "bidirectional": true,
+      "maxConcurrent": 2,
+      "speedFactor": 1
+    },
+    {
+      "edgeId": "e-aisle-ship",
+      "from": "n-aisle-1",
+      "to": "n-ship",
+      "lengthM": 26,
+      "bidirectional": true,
+      "maxConcurrent": 2,
+      "speedFactor": 1
+    }
+  ],
+  "defaults": {
+    "travelSpeedMps": 1.2,
+    "emptySpeedMps": 1.5
+  }
+}

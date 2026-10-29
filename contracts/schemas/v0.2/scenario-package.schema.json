@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/scenario-package-v0.2.json",
+  "title": "Scenario Package (legacy push 侧) schema 兼容层",
+  "description": "旧推演场景包兼容形状。业务量只在场景包；expectedLayoutRevision 与快照 layoutRevision 字符串相等。外层新对象见 v0.3 ScenarioPackage。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "scenarioId", "expectedLayoutRevision", "horizonSec", "seed"],
+  "properties": {
+    "schemaVersion": { "const": "0.2" },
+    "scenarioId": { "type": "string", "minLength": 1 },
+    "expectedLayoutRevision": { "type": "string", "minLength": 1 },
+    "horizonSec": { "type": "number", "exclusiveMinimum": 0 },
+    "seed": { "type": "integer" },
+    "flowKinds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["full_pallet", "break_bulk", "piece_pick"]
+      },
+      "uniqueItems": true
+    },
+    "casesPerPallet": { "type": "number", "exclusiveMinimum": 0 },
+    "arrivalRatePalletsPerHour": { "type": "number", "minimum": 0 },
+    "outboundTargetPalletEquiv": { "type": "number", "minimum": 0 },
+    "flowShares": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "full_pallet": { "type": "number", "minimum": 0, "maximum": 1 },
+        "break_bulk": { "type": "number", "minimum": 0, "maximum": 1 },
+        "piece_pick": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "forkliftCount": { "type": "integer", "minimum": 0 },
+        "pickerCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "orderProfileSource": {
+      "type": "string",
+      "enum": ["manual", "excel", "csv", "api_snapshot"],
+      "default": "manual"
+    },
+    "experiment": { "type": "object", "additionalProperties": true },
+    "shiftSchedule": { "type": "object", "additionalProperties": true },
+    "skillTags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "faults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "enabled": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

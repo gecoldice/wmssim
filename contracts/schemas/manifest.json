@@ -1,0 +1,27 @@
+{
+  "contractVersionOuter": "0.3",
+  "snapshotSchemaVersion": "0.2",
+  "equipSchemaVersion": "0.2",
+  "schemas": {
+    "equip": "v0.2/equip.schema.json",
+    "layoutSnapshot": "v0.2/layout-snapshot.schema.json",
+    "scenarioPackageLegacy": "v0.2/scenario-package.schema.json",
+    "common": "v0.3/common.schema.json",
+    "project": "v0.3/project.schema.json",
+    "facilityRevision": "v0.3/facility-revision.schema.json",
+    "layoutDocumentRevision": "v0.3/layout-document-revision.schema.json",
+    "demandRevision": "v0.3/demand-revision.schema.json",
+    "operatingProfileRevision": "v0.3/operating-profile-revision.schema.json",
+    "planningRequest": "v0.3/planning-request.schema.json",
+    "scenarioPackage": "v0.3/scenario-package.schema.json"
+  },
+  "openapi": "openapi/openapi.yaml",
+  "coord": {
+    "plane": "metric meters; origin facility SW corner; +X east; +Y north; yawDeg CCW from +X",
+    "world3d": "(X,Y,Z)=(x, heightM, -y); asset local 0° → +Z ⇒ world yawY = 90° + yawDeg"
+  },
+  "notes": [
+    "Do not import KPI formulas from 03-UI原型 HTML demos into the computation layer.",
+    "Gold-sample KPI assertions are deferred until DES engine exists; fixtures must not invent expected KPI."
+  ]
+}

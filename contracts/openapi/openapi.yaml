@@ -1,0 +1,151 @@
+openapi: 3.1.0
+info:
+  title: simapp API
+  version: 0.3.0
+  description: |
+    仓库布局规划与运营推演应用 API（拟实施合同骨架）。
+    外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
+    M0 仅锁定契约形状与健康检查；业务端点在后续里程碑实现。
+servers:
+  - url: http://127.0.0.1:8000/api/v1
+    description: local
+tags:
+  - name: health
+  - name: projects
+  - name: jobs
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness
+      operationId: getHealth
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, contractVersion]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  contractVersion:
+                    type: string
+                    const: "0.3"
+  /projects:
+    post:
+      tags: [projects]
+      summary: Create project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "422":
+          description: domain error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /jobs/{jobId}:
+    get:
+      tags: [jobs]
+      summary: Get async job status
+      operationId: getJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: job status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStatus"
+        "404":
+          description: not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    CreateProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [name, unitSystem]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        unitSystem:
+          type: string
+          enum: [metric]
+    Project:
+      type: object
+      additionalProperties: false
+      required: [contractVersion, id, name, unitSystem, createdAt]
+      properties:
+        contractVersion:
+          type: string
+          const: "0.3"
+        id:
+          type: string
+        name:
+          type: string
+        unitSystem:
+          type: string
+          enum: [metric]
+        createdAt:
+          type: string
+          format: date-time
+    JobStatus:
+      type: object
+      additionalProperties: false
+      required: [id, state]
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum: [queued, running, cancel_requested, succeeded, failed, cancelled]
+        phase:
+          type: string
+          nullable: true
+        outcome:
+          type: string
+          nullable: true
+        error:
+          $ref: "#/components/schemas/ErrorResponse"
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+        retryable:
+          type: boolean
+        traceId:
+          type: string
+          nullable: true

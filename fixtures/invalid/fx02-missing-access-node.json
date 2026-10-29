@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "0.2",
+  "layoutId": "layout-fx02-bad",
+  "layoutRevision": "rev-bad-access",
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m",
+    "yawZero": "+X"
+  },
+  "elements": [
+    {
+      "elementId": "n-1",
+      "kind": "node",
+      "pose": { "x": 5, "y": 5 },
+      "footprint": { "w": 0.1, "d": 0.1 }
+    },
+    {
+      "elementId": "rack-orphan",
+      "typeElementId": "ST-PAL-01",
+      "kind": "slot",
+      "pose": { "x": 5, "y": 7 },
+      "footprint": { "w": 2.7, "d": 1.2 },
+      "capacityPallets": 4
+    }
+  ],
+  "edges": []
+}

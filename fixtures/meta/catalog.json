@@ -1,0 +1,126 @@
+{
+  "fixtureCatalogVersion": "0.1",
+  "notes": [
+    "合成数字仅用于契约/结构测试，不进入客户项目默认值。",
+    "金样 KPI 待 DES 引擎实现后独立核对；本目录不含猜测 KPI 期望值。",
+    "正例 expect=pass；反例 expect=fail 并声明失败原因类别。"
+  ],
+  "entries": [
+    {
+      "id": "FX-01",
+      "path": "valid/fx01-small-rect-facility.json",
+      "kind": "facilityRevision",
+      "schema": "v0.3/facility-revision.schema.json",
+      "expect": "pass",
+      "purpose": "可解析小矩形场地"
+    },
+    {
+      "id": "FX-01-SNAP",
+      "path": "valid/fx01-layout-snapshot.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "pass",
+      "purpose": "小矩形仓连通通道图与 accessNode"
+    },
+    {
+      "id": "FX-01-EQUIP",
+      "path": "valid/fx01-equip-st-pal-01.json",
+      "kind": "equip",
+      "schema": "v0.2/equip.schema.json",
+      "expect": "pass",
+      "purpose": "正式类型 ID ST-PAL-01 盒子代理"
+    },
+    {
+      "id": "FX-01-DEMAND",
+      "path": "valid/fx01-demand-revision.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "单一货物组与明确单位"
+    },
+    {
+      "id": "FX-01-PLAN",
+      "path": "valid/fx01-planning-request.json",
+      "kind": "planningRequest",
+      "schema": "v0.3/planning-request.schema.json",
+      "expect": "pass",
+      "purpose": "PlanningRequest 形状"
+    },
+    {
+      "id": "FX-01-OP",
+      "path": "valid/fx01-operating-profile.json",
+      "kind": "operatingProfileRevision",
+      "schema": "v0.3/operating-profile-revision.schema.json",
+      "expect": "pass",
+      "purpose": "资源池与班次窗"
+    },
+    {
+      "id": "FX-01-SCENARIO-03",
+      "path": "valid/fx01-scenario-package-v03.json",
+      "kind": "scenarioPackage",
+      "schema": "v0.3/scenario-package.schema.json",
+      "expect": "pass",
+      "purpose": "外层 ScenarioPackage 0.3"
+    },
+    {
+      "id": "FX-01-LAYOUT-DOC",
+      "path": "valid/fx01-layout-document.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "purpose": "LayoutDocumentRevision 编辑器真相"
+    },
+    {
+      "id": "FX-01-PROJECT",
+      "path": "valid/fx01-project.json",
+      "kind": "project",
+      "schema": "v0.3/project.schema.json",
+      "expect": "pass",
+      "purpose": "Project 米制"
+    },
+    {
+      "id": "FX-02-NEG",
+      "path": "invalid/fx02-missing-access-node.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "semantic_fail",
+      "purpose": "货位缺 accessNodeId（schema 可通过，语义校验应拒绝）",
+      "reasonCode": "NO_ACCESS_NODE"
+    },
+    {
+      "id": "FX-BAD-VERSION",
+      "path": "invalid/bad-snapshot-version.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "fail",
+      "purpose": "schemaVersion 非 0.2",
+      "reasonCode": "SCHEMA_VERSION"
+    },
+    {
+      "id": "FX-BAD-EQUIP-ALIAS",
+      "path": "invalid/bad-equip-short-alias.json",
+      "kind": "equip",
+      "schema": "v0.2/equip.schema.json",
+      "expect": "fail",
+      "purpose": "历史短名 st_pal_std 禁止",
+      "reasonCode": "ELEMENT_ID"
+    },
+    {
+      "id": "FX-BAD-CONTRACT",
+      "path": "invalid/bad-planning-contract-version.json",
+      "kind": "planningRequest",
+      "schema": "v0.3/planning-request.schema.json",
+      "expect": "fail",
+      "purpose": "外层 contractVersion 非 0.3",
+      "reasonCode": "CONTRACT_VERSION"
+    },
+    {
+      "id": "FX-07-ZERO",
+      "path": "valid/fx07-zero-demand.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "零需求边界；KPI 期望未锁定，仅结构合法"
+    }
+  ]
+}

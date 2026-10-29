@@ -1,0 +1,22 @@
+{
+  "contractVersion": "0.2",
+  "projectId": "project-fx01",
+  "facilityRef": { "id": "facility-fx01", "revision": "f-r1" },
+  "baseVariantRef": { "id": "variant-fx01", "revision": "v-r1" },
+  "demandRef": { "id": "demand-fx01", "revision": "d-r1" },
+  "scope": { "mode": "whole" },
+  "locks": [],
+  "goals": ["capacity"],
+  "constraints": {},
+  "evaluationLevel": "quick",
+  "budget": {
+    "maxConfigurations": 50,
+    "maxIterations": 1000,
+    "maxWallTimeSec": 30,
+    "maxMemoryMb": 512
+  },
+  "seed": 42,
+  "catalogRef": { "id": "catalog-mvp", "revision": "c-r1" },
+  "templateSetRef": { "id": "template-rect", "revision": "t-r1" },
+  "ruleSetRefs": []
+}

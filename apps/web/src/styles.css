@@ -1,0 +1,114 @@
+:root {
+  --bg0: #1a2330;
+  --bg1: #243044;
+  --ink: #e8eef6;
+  --muted: #9aabbe;
+  --accent: #3d8f7a;
+  --line: rgba(232, 238, 246, 0.12);
+  font-family: "IBM Plex Sans", "Source Han Sans SC", "Noto Sans SC", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #2f4a5e 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #1f3a34 0%, transparent 50%),
+    linear-gradient(160deg, var(--bg0), var(--bg1));
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.shell {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 4rem 1.5rem 3rem;
+}
+
+.brand {
+  font-size: clamp(2.4rem, 5vw, 3.6rem);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.6rem;
+}
+
+.lead {
+  margin: 0 0 1.75rem;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  max-width: 38rem;
+}
+
+.cta {
+  display: inline-flex;
+  gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+
+button {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent) 85%, black);
+  color: white;
+  padding: 0.65rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--ink);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.panel {
+  border-top: 1px solid var(--line);
+  padding-top: 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.35rem 1rem;
+  font-size: 0.95rem;
+}
+
+.meta dt {
+  color: var(--muted);
+}
+
+.meta dd {
+  margin: 0;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+pre {
+  margin: 0;
+  padding: 1rem;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.note {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}

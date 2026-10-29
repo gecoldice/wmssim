@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/scenario-package.json",
+  "title": "ScenarioPackage v0.3",
+  "description": "新外层场景包。适配器将 DemandRevision+OperatingProfile 组合为旧 0.2 推演场景并写 expectedLayoutRevision；布局快照保持 0.2。不得从 UI 演示状态猜 KPI。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "scenarioId", "demandRef", "operatingRef", "runControl"],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "scenarioId": { "type": "string", "minLength": 1 },
+    "demandRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "operatingRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "revision"],
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "runControl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["horizonSec", "seedStreams", "metricDefinitionVersion"],
+      "properties": {
+        "horizonSec": { "type": "number", "exclusiveMinimum": 0 },
+        "seedStreams": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" },
+          "minProperties": 1
+        },
+        "demandSampleRef": { "type": ["string", "null"] },
+        "metricDefinitionVersion": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
