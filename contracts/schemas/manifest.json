@@ -13,7 +13,8 @@
     "demandRevision": "v0.3/demand-revision.schema.json",
     "operatingProfileRevision": "v0.3/operating-profile-revision.schema.json",
     "planningRequest": "v0.3/planning-request.schema.json",
-    "scenarioPackage": "v0.3/scenario-package.schema.json"
+    "scenarioPackage": "v0.3/scenario-package.schema.json",
+    "validationReport": "v0.3/validation-report.schema.json"
   },
   "openapi": "openapi/openapi.yaml",
   "coord": {

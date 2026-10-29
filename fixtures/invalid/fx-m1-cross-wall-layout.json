@@ -1,0 +1,28 @@
+{
+  "contractVersion": "0.3",
+  "id": "layout-cross-wall",
+  "revision": "ld-xw-1",
+  "facilityRef": { "id": "facility-fx01-wall", "revision": "f-wall-1" },
+  "parentRef": null,
+  "elements": [
+    {
+      "instanceId": "rack-west",
+      "typeElementId": "ST-PAL-01",
+      "pose": { "x": 10, "y": 14, "yawDeg": 0 },
+      "params": { "levels": 2, "bays": 1, "minClearWidthM": 3.0 },
+      "assetDisposition": "new"
+    }
+  ],
+  "aisles": [
+    {
+      "id": "aisle-east-only",
+      "centerline": [
+        { "x": 22, "y": 12 },
+        { "x": 36, "y": 12 }
+      ],
+      "widthM": 3.5
+    }
+  ],
+  "locks": [],
+  "catalogVersion": "catalog-mvp@c-r1"
+}

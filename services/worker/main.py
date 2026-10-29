@@ -1,8 +1,4 @@
-"""Worker entrypoint skeleton.
-
-M0 does not run DES/planning; this process only reports capability and
-refuses to invent KPI from UI demo formulas.
-"""
+"""Worker entrypoint — M1 可被 API 同进程调用派生/校验；无 DES/规划。"""
 
 from __future__ import annotations
 
@@ -14,28 +10,29 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="simapp worker skeleton")
+    parser = argparse.ArgumentParser(description="simapp worker")
     parser.add_argument("--ping", action="store_true", help="print capability JSON and exit")
     args = parser.parse_args()
     payload = {
         "role": "compute-worker",
         "status": "idle",
         "contractVersion": "0.3",
+        "milestone": "M1",
         "capabilities": {
-            "geometry": "planned",
-            "planning": "planned",
-            "des": "planned",
+            "geometry": "aabb+segment",
+            "derive": True,
+            "validate": True,
+            "planning": False,
+            "des": False,
             "kpiFromUiDemo": False,
         },
         "contracts": str(ROOT / "contracts"),
         "fixtures": str(ROOT / "fixtures"),
-        "message": "M0 skeleton only — no compute yet",
+        "message": "M1: derive/validate available via API prepare-jobs; no DES/planning",
     }
-    if args.ping:
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-        return 0
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-    print("Worker has no job loop in M0. Exit.")
+    if not args.ping:
+        print("No job loop; use API /layouts/{id}/prepare-jobs for M1.")
     return 0
 
 

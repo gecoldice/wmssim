@@ -1,9 +1,10 @@
 {
-  "fixtureCatalogVersion": "0.1",
+  "fixtureCatalogVersion": "0.2",
   "notes": [
     "合成数字仅用于契约/结构测试，不进入客户项目默认值。",
     "金样 KPI 待 DES 引擎实现后独立核对；本目录不含猜测 KPI 期望值。",
-    "正例 expect=pass；反例 expect=fail 并声明失败原因类别。"
+    "正例 expect=pass；反例 expect=fail 并声明失败原因类别。",
+    "M1 派生/碰撞/窄通道/跨墙语义见 scripts/run_m1_checks.py（prepareExpect）。"
   ],
   "entries": [
     {
@@ -121,6 +122,63 @@
       "schema": "v0.3/demand-revision.schema.json",
       "expect": "pass",
       "purpose": "零需求边界；KPI 期望未锁定，仅结构合法"
+    },
+    {
+      "id": "FX-M1-OK",
+      "path": "valid/fx-m1-ok-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "ready",
+      "purpose": "手动路径正例：可派生并可推演准备"
+    },
+    {
+      "id": "FX-M1-WALL-FACILITY",
+      "path": "valid/fx01-facility-with-wall.json",
+      "kind": "facilityRevision",
+      "schema": "v0.3/facility-revision.schema.json",
+      "expect": "pass",
+      "purpose": "中间隔墙场地（跨墙夹具）"
+    },
+    {
+      "id": "FX-M1-COLLISION",
+      "path": "invalid/fx-m1-collision-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "GEOMETRY_INVALID",
+      "purpose": "两货架占地碰撞"
+    },
+    {
+      "id": "FX-M1-NARROW",
+      "path": "invalid/fx-m1-narrow-aisle-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "NARROW_AISLE",
+      "purpose": "通道窄于设备声明 minClearWidthM"
+    },
+    {
+      "id": "FX-M1-CROSS-WALL",
+      "path": "invalid/fx-m1-cross-wall-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "NO_ACCESS_NODE",
+      "purpose": "隔墙切断；跨墙 access 绑定应失败"
+    },
+    {
+      "id": "FX-M1-CROSS-WALL-SNAP",
+      "path": "invalid/fx-m1-cross-wall-snapshot.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "NO_ACCESS_NODE",
+      "purpose": "强制跨墙 accessNode 的 snapshot；权威校验拒绝"
     }
   ]
 }

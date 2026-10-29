@@ -2,7 +2,7 @@
   "name": "simapp",
   "version": "0.3.0",
   "private": true,
-  "description": "Warehouse layout planning + operations simulation (M0 contracts & fixtures)",
+  "description": "Warehouse layout planning + operations simulation (M1 manual layout path)",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -11,6 +11,7 @@
     "dev:web": "npm run dev -w @simapp/web",
     "build:web": "npm run build -w @simapp/web",
     "validate:fixtures": "PYTHONPATH=shared/python python3 scripts/validate_fixtures.py",
+    "test:m1": "PYTHONPATH=shared/python python3 scripts/run_m1_checks.py",
     "dev:api": "PYTHONPATH=shared/python uvicorn app.main:app --app-dir services/api --reload --host 127.0.0.1 --port 8000",
     "worker:ping": "PYTHONPATH=shared/python python3 services/worker/main.py --ping"
   }

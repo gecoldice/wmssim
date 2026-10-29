@@ -95,7 +95,42 @@ export type ErrorCode =
   | "INCOMPARABLE_RESULTS"
   | "PRICE_INCOMPLETE"
   | "SCORE_PROFILE_INVALID"
-  | "COMPUTATION_FAILED";
+  | "COMPUTATION_FAILED"
+  | "NARROW_AISLE";
+
+export type ValidationStatus = "pass" | "warn" | "fail" | "unknown";
+
+export type ValidationCheck = {
+  checkId: string;
+  ruleId: string;
+  status: ValidationStatus;
+  objectIds?: string[];
+  message: string;
+  evidence?: Record<string, unknown>;
+  fixHint?: string | null;
+};
+
+export type ValidationReport = {
+  contractVersion: typeof CONTRACT_VERSION;
+  id: string;
+  inputFingerprint?: string | null;
+  status: ValidationStatus;
+  checks: ValidationCheck[];
+  ruleSetRefs: RevisionRef[];
+  computedAt: string;
+  layoutRef?: RevisionRef;
+  facilityRef?: RevisionRef;
+};
+
+export type PrepareStatus = "draft" | "saved" | "ready" | "failed" | "stale";
+
+export type PrepareResult = {
+  prepareStatus: PrepareStatus;
+  simulationReady: boolean;
+  layoutRevision: string;
+  inputFingerprint?: string;
+  validationReport?: ValidationReport;
+};
 
 export type ErrorResponse = {
   code: ErrorCode | string;

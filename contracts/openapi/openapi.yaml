@@ -1,17 +1,19 @@
 openapi: 3.1.0
 info:
   title: simapp API
-  version: 0.3.0
+  version: 0.3.1
   description: |
-    仓库布局规划与运营推演应用 API（拟实施合同骨架）。
+    仓库布局规划与运营推演应用 API。
     外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
-    M0 仅锁定契约形状与健康检查；业务端点在后续里程碑实现。
+    M1：项目/工作台/layoutRevision、派生与权威校验、推演准备状态。
+    手动路径独立可用；不含自动规划 / DES。
 servers:
   - url: http://127.0.0.1:8000/api/v1
     description: local
 tags:
   - name: health
   - name: projects
+  - name: layouts
   - name: jobs
 paths:
   /health:
@@ -22,18 +24,6 @@ paths:
       responses:
         "200":
           description: ok
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status, contractVersion]
-                properties:
-                  status:
-                    type: string
-                    enum: [ok]
-                  contractVersion:
-                    type: string
-                    const: "0.3"
   /projects:
     post:
       tags: [projects]
@@ -48,16 +38,127 @@ paths:
       responses:
         "201":
           description: created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Project"
-        "422":
-          description: domain error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+  /projects/{projectId}:
+    get:
+      tags: [projects]
+      summary: Get project summary
+      operationId: getProject
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: project
+  /projects/{projectId}/facility-revisions:
+    post:
+      tags: [projects]
+      summary: Save facility revision
+      operationId: putFacilityRevision
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [facility]
+              properties:
+                facility:
+                  type: object
+      responses:
+        "201":
+          description: saved
+  /projects/{projectId}/variants:
+    get:
+      tags: [projects]
+      summary: List variants
+      operationId: listVariants
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: variants
+    post:
+      tags: [projects]
+      summary: Create manual/template variant
+      operationId: createVariant
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVariantRequest"
+      responses:
+        "201":
+          description: created
+  /layouts/{layoutId}/revisions:
+    post:
+      tags: [layouts]
+      summary: Save immutable layout revision (not validated)
+      operationId: saveLayoutRevision
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveLayoutRevisionRequest"
+      responses:
+        "201":
+          description: saved; prepareStatus=saved; simulationReady=false
+        "409":
+          description: revision conflict
+  /layouts/{layoutId}/prepare-jobs:
+    post:
+      tags: [layouts]
+      summary: Derive slots/aisles/accessNode + authoritative validate
+      operationId: prepareLayout
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareJobRequest"
+      responses:
+        "202":
+          description: prepare result (M1 sync completes in response)
+  /layouts/{layoutId}/prepare:
+    get:
+      tags: [layouts]
+      summary: Get last prepare result for layoutRevision
+      operationId: getPrepare
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: projectId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: revision
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: prepare payload including simulationReady
   /jobs/{jobId}:
     get:
       tags: [jobs]
@@ -72,17 +173,14 @@ paths:
       responses:
         "200":
           description: job status
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JobStatus"
-        "404":
-          description: not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 components:
+  parameters:
+    projectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     CreateProjectRequest:
       type: object
@@ -95,42 +193,57 @@ components:
         unitSystem:
           type: string
           enum: [metric]
-    Project:
+    RevisionRef:
       type: object
-      additionalProperties: false
-      required: [contractVersion, id, name, unitSystem, createdAt]
+      required: [id, revision]
       properties:
-        contractVersion:
-          type: string
-          const: "0.3"
         id:
           type: string
+        revision:
+          type: string
+    CreateVariantRequest:
+      type: object
+      required: [name, source, layoutRef]
+      properties:
         name:
           type: string
-        unitSystem:
+        source:
           type: string
-          enum: [metric]
-        createdAt:
-          type: string
-          format: date-time
-    JobStatus:
+          enum: [manual, template, generated, edited]
+        layoutRef:
+          $ref: "#/components/schemas/RevisionRef"
+        operatingRef:
+          $ref: "#/components/schemas/RevisionRef"
+    SaveLayoutRevisionRequest:
       type: object
-      additionalProperties: false
-      required: [id, state]
+      required: [projectId, document]
       properties:
-        id:
-          type: string
-        state:
-          type: string
-          enum: [queued, running, cancel_requested, succeeded, failed, cancelled]
-        phase:
+        baseRevision:
           type: string
           nullable: true
-        outcome:
+        projectId:
           type: string
-          nullable: true
-        error:
-          $ref: "#/components/schemas/ErrorResponse"
+        document:
+          type: object
+    PrepareJobRequest:
+      type: object
+      required: [projectId, layoutRef, facilityRef]
+      properties:
+        projectId:
+          type: string
+        layoutRef:
+          $ref: "#/components/schemas/RevisionRef"
+        facilityRef:
+          $ref: "#/components/schemas/RevisionRef"
+        ruleSetRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevisionRef"
+        catalogRef:
+          $ref: "#/components/schemas/RevisionRef"
+        sync:
+          type: boolean
+          default: true
     ErrorResponse:
       type: object
       additionalProperties: false
@@ -142,7 +255,6 @@ components:
           type: string
         details:
           type: object
-          additionalProperties: true
           nullable: true
         retryable:
           type: boolean

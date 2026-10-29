@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/validation-report.json",
+  "title": "ValidationReport v0.3",
+  "description": "权威校验报告；绑定 inputFingerprint。status=pass/warn/fail/unknown。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contractVersion", "id", "status", "checks", "ruleSetRefs", "computedAt"],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "inputFingerprint": { "type": ["string", "null"] },
+    "status": { "type": "string", "enum": ["pass", "warn", "fail", "unknown"] },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["checkId", "ruleId", "status", "message"],
+        "properties": {
+          "checkId": { "type": "string" },
+          "ruleId": { "type": "string" },
+          "status": { "type": "string", "enum": ["pass", "warn", "fail", "unknown"] },
+          "objectIds": { "type": "array", "items": { "type": "string" } },
+          "message": { "type": "string" },
+          "evidence": { "type": "object" },
+          "fixHint": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "ruleSetRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "revision"],
+        "properties": {
+          "id": { "type": "string" },
+          "revision": { "type": "string" }
+        }
+      }
+    },
+    "computedAt": { "type": "string" },
+    "derivationVersion": { "type": "string" },
+    "layoutRef": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    },
+    "facilityRef": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "revision": { "type": "string" }
+      }
+    }
+  }
+}

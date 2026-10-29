@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "0.2",
+  "layoutId": "layout-cross-wall",
+  "layoutRevision": "ld-xw-forced",
+  "exportedAt": "2026-10-29T02:10:00+08:00",
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m",
+    "yawZero": "+X"
+  },
+  "elements": [
+    {
+      "elementId": "n-west",
+      "kind": "node",
+      "pose": { "x": 10, "y": 12 },
+      "footprint": { "w": 0.1, "d": 0.1 }
+    },
+    {
+      "elementId": "n-east",
+      "kind": "node",
+      "pose": { "x": 30, "y": 12 },
+      "footprint": { "w": 0.1, "d": 0.1 }
+    },
+    {
+      "elementId": "rack-west",
+      "typeElementId": "ST-PAL-01",
+      "kind": "slot",
+      "pose": { "x": 10, "y": 14, "yawDeg": 0 },
+      "footprint": { "w": 2.7, "d": 1.2 },
+      "accessNodeId": "n-east",
+      "capacityPallets": 4,
+      "zone": "storage"
+    },
+    {
+      "elementId": "dock-east",
+      "typeElementId": "OUT-DOCK-01",
+      "kind": "dock",
+      "pose": { "x": 30, "y": 12, "yawDeg": 180 },
+      "footprint": { "w": 3, "d": 4 },
+      "labels": ["ship"],
+      "accessNodeId": "n-east"
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "e-cross-wall",
+      "from": "n-west",
+      "to": "n-east",
+      "lengthM": 20,
+      "bidirectional": true
+    }
+  ],
+  "defaults": { "travelSpeedMps": 1.2, "emptySpeedMps": 1.5 }
+}
