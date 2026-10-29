@@ -1,7 +1,9 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ColumnMark, Guide, Tone } from "./geom";
 import { columnBox, fireLaneInside, footprintCorners, localToWorld } from "./geom";
+import { ProxyShape } from "./ProxyShape";
 import { catalogItem } from "../library/catalog";
+import { buildPlaced, interactionStyle } from "../proxy/extrude";
 import type { Actor } from "../run-cards/playback";
 import { trailOf, type Segment } from "../run-cards/playback";
 import type { Draft, PoseEl } from "../workbench/draft";
@@ -52,20 +54,6 @@ type Props = {
 
 type Cam = { ppm: number; ox: number; oy: number };
 
-const FILL: Record<string, string> = {
-  "ST-PAL-01": "#bfded7",
-  "ST-FLOOR-01": "#d3e8df",
-  "IN-DOCK-01": "#d3dee8",
-  "OUT-DOCK-01": "#d7e0ea",
-  "PK-DEPAL-01": "#f4d6b9",
-  "PK-PUT-EACH-01": "#d5e2f2",
-  "OUT-PACK-01": "#cadcf0",
-  "MH-HAND-01": "#e1e9e6",
-  "MH-FORK-01": "#d8e6df",
-  "AUX-FIRE-01": "#fbe2bd",
-  "AUX-WALL-01": "#dce4e4",
-};
-
 const TONE_STROKE: Record<Tone, string> = {
   green: "#2f8f72",
   yellow: "#c4922e",
@@ -102,6 +90,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
   const [view, setView] = useState({ w: 960, h: 620 });
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [hover, setHover] = useState<string | null>(null);
   const camRef = useRef<Cam>({ ppm: 16, ox: 80, oy: 500 });
 
   const width = Number(draft.widthM);
@@ -213,10 +202,10 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
           aria-label="综合仓米制布局"
           onPointerDown={onBackground}
         >
-          <rect x={0} y={0} width={view.w} height={view.h} fill="#fafcfb" />
+          <rect x={0} y={0} width={view.w} height={view.h} fill="#EEF1F4" />
           <g transform={`translate(${cam.ox} ${cam.oy}) scale(${cam.ppm} ${-cam.ppm})`}>
             {sized ? (
-              <rect x={0} y={0} width={width} height={height} fill="#f5f8f6" stroke="#738d8d" strokeWidth={1.4 / cam.ppm} />
+              <rect x={0} y={0} width={width} height={height} fill="#EEF1F4" stroke="#9AA7B0" strokeWidth={1.2 / cam.ppm} />
             ) : null}
             {sized && showGrid
               ? gridLines(width, height, gridStep).map((line) => (
@@ -226,7 +215,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                     y1={line.y1}
                     x2={line.x2}
                     y2={line.y2}
-                    stroke="#e4ecea"
+                    stroke="#D5DCE3"
                     strokeWidth={1 / cam.ppm}
                   />
                 ))
@@ -328,6 +317,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                       ppm={cam.ppm}
                       relief={relief}
                       selected={selected === el.instanceId}
+                      hovered={hover === el.instanceId}
                       conflict={conflictIds.includes(el.instanceId)}
                       tone={liveTone?.id === el.instanceId ? liveTone.tone : null}
                       showLinks={showLinks}
@@ -335,25 +325,12 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                       metersFromClient={metersFromClient}
                       onSelect={onSelect}
                       onMove={onMove}
+                      onHover={setHover}
                     />
                   ))
               : null}
             {ghost && sized ? (
-              <ProxyBox
-                x={ghost.x}
-                y={ghost.y}
-                lengthM={ghost.lengthM}
-                widthM={ghost.widthM}
-                heightM={ghost.heightM}
-                yawDeg={ghost.yawDeg}
-                fill={TONE_STROKE[ghost.tone]}
-                stroke={TONE_STROKE[ghost.tone]}
-                ppm={cam.ppm}
-                relief={relief}
-                ghost
-                label={ghost.label}
-                detail={ghost.detail || (ghost.tone === "green" ? "可放" : ghost.tone === "yellow" ? "注意" : "拒绝")}
-              />
+              <GhostProxy ghost={ghost} ppm={cam.ppm} relief={relief} />
             ) : null}
             {actors.map((actor) => {
               const trail = trailOf(segments, actor.resourceId, simT);
@@ -457,11 +434,41 @@ function headingOf(trail: Array<{ x: number; y: number }>): number {
   return (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
 }
 
+function GhostProxy({ ghost, ppm, relief }: { ghost: Ghost; ppm: number; relief: boolean }) {
+  const model = buildPlaced(ghost.typeId, { lengthM: ghost.lengthM, widthM: ghost.widthM, heightM: ghost.heightM });
+  return (
+    <g>
+      <ProxyShape
+        model={model}
+        x={ghost.x}
+        y={ghost.y}
+        yawDeg={ghost.yawDeg}
+        ppm={ppm}
+        relief={relief}
+        stroke={TONE_STROKE[ghost.tone]}
+        strokePx={2}
+        fill={model.fill}
+        fillAlpha={model.fillAlpha}
+        ghost
+      />
+      <g transform={`translate(${ghost.x} ${ghost.y}) scale(${1 / ppm} ${-1 / ppm})`} pointerEvents="none">
+        <text y={-8} textAnchor="middle" fill="#294246" fontSize={12} fontWeight={700}>
+          {ghost.label}
+        </text>
+        <text y={8} textAnchor="middle" fill="#5A6570" fontSize={10}>
+          {ghost.detail || (ghost.tone === "green" ? "可放" : ghost.tone === "yellow" ? "注意" : "拒绝")}
+        </text>
+      </g>
+    </g>
+  );
+}
+
 function Item({
   el,
   ppm,
   relief,
   selected,
+  hovered,
   conflict,
   tone,
   showLinks,
@@ -469,11 +476,13 @@ function Item({
   metersFromClient,
   onSelect,
   onMove,
+  onHover,
 }: {
   el: PoseEl;
   ppm: number;
   relief: boolean;
   selected: boolean;
+  hovered: boolean;
   conflict: boolean;
   tone: Tone | null;
   showLinks: boolean;
@@ -481,12 +490,26 @@ function Item({
   metersFromClient: (clientX: number, clientY: number) => { x: number; y: number } | null;
   onSelect: (id: string | null) => void;
   onMove: (id: string, x: number, y: number, phase: "start" | "move" | "end") => void;
+  onHover: (id: string | null) => void;
 }) {
   const spec = catalogItem(el.typeElementId);
-  const stroke = tone ? TONE_STROKE[tone] : conflict ? "#ce5d50" : selected ? "#168d7e" : "#7a9892";
+  const model = buildPlaced(el.typeElementId, {
+    lengthM: el.lengthM,
+    widthM: el.widthM,
+    heightM: el.heightM,
+    bays: el.bays,
+    levels: el.levels,
+  });
+  const look = interactionStyle(
+    { hover: hovered && !selected && !conflict && !tone, selected: selected && !conflict && !tone, conflict: conflict && !tone },
+    { fill: model.fill, fillAlpha: model.fillAlpha, stroke: model.stroke, shadowAlpha: model.shadowAlpha },
+  );
+  const stroke = tone ? TONE_STROKE[tone] : look.stroke;
   return (
     <g
       className={`board-item${selected ? " selected" : ""}${conflict ? " conflict" : ""}`}
+      onPointerEnter={() => onHover(el.instanceId)}
+      onPointerLeave={() => onHover(null)}
       onPointerDown={(event) => {
         if (!interactive) return;
         event.stopPropagation();
@@ -523,22 +546,27 @@ function Item({
           strokeDasharray={`${0.2} ${0.15}`}
         />
       ) : null}
-      <ProxyBox
+      <ProxyShape
+        model={model}
         x={el.x}
         y={el.y}
-        lengthM={el.lengthM}
-        widthM={el.widthM}
-        heightM={el.heightM}
         yawDeg={el.yawDeg}
-        fill={FILL[el.typeElementId] ?? "#607680"}
-        stroke={stroke}
         ppm={ppm}
         relief={relief}
-        label={spec?.name ?? el.typeElementId}
-        detail={`${el.instanceId} · ${trim(el.lengthM)}×${trim(el.widthM)} m`}
-        levels={el.levels}
-        selected={selected}
+        stroke={stroke}
+        strokePx={tone ? 2.2 : look.strokePx}
+        fill={look.fill}
+        fillAlpha={look.fillAlpha}
+        badge
       />
+      <g transform={`translate(${el.x} ${el.y + (relief ? model.heightM * 0.42 : 0)}) scale(${1 / ppm} ${-1 / ppm})`} pointerEvents="none">
+        <text y={-6} textAnchor="middle" fill="#294246" fontSize={12} fontWeight={700}>
+          {spec?.name ?? el.typeElementId}
+        </text>
+        <text y={10} textAnchor="middle" fill="#5A6570" fontSize={10}>
+          {`${el.instanceId} · ${trim(el.lengthM)}×${trim(el.widthM)} m`}
+        </text>
+      </g>
     </g>
   );
 }

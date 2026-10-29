@@ -1,0 +1,45 @@
+{
+  "schema_version": "0.2",
+  "element_id": "MH-HAND-01",
+  "element_type": "AisleSegment",
+  "display_name": "通道占位",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 2.5,
+    "aabb": {
+      "length_m": 6,
+      "width_m": 2.5
+    }
+  },
+  "colliders": [],
+  "ports": [],
+  "connector_ids": [],
+  "params": {
+    "geometry": {
+      "length_m": 6,
+      "width_m": 2.5,
+      "orientation_deg": 0
+    },
+    "capability": {},
+    "rules": {
+      "bidirectional": true,
+      "must_keep_clear": true
+    },
+    "interface": {}
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "MH-HAND-01",
+    "flows": [
+      "pallet_full"
+    ],
+    "notes": "proxy only · flat translucent aisle · layout graph is SoT · no GLB",
+    "proxy": true
+  }
+}

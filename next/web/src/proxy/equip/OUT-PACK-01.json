@@ -1,0 +1,74 @@
+{
+  "schema_version": "0.2",
+  "element_id": "OUT-PACK-01",
+  "element_type": "PackStation",
+  "display_name": "复核打包",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 2.2,
+    "aabb": {
+      "length_m": 2.2,
+      "width_m": 1.6
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "order_in",
+      "role": "in",
+      "x_m": -0.8,
+      "y_m": 0.9,
+      "z_m": 0,
+      "normal_deg": 270,
+      "family": "tote"
+    },
+    {
+      "id": "parcel_out",
+      "role": "out",
+      "x_m": 0.8,
+      "y_m": 0.9,
+      "z_m": 0,
+      "normal_deg": 90,
+      "family": "generic"
+    }
+  ],
+  "connector_ids": [
+    "order_in",
+    "parcel_out"
+  ],
+  "params": {
+    "geometry": {
+      "length_m": 2.2,
+      "width_m": 1.6,
+      "height_m": 1.8,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "packs_per_hour": 80
+    },
+    "rules": {
+      "pack_materials": [
+        "carton",
+        "tape",
+        "label"
+      ]
+    },
+    "interface": {}
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "OUT-PACK-01",
+    "flows": [
+      "small_sort",
+      "decant"
+    ],
+    "notes": "proxy only · pack bench · no GLB",
+    "proxy": true
+  }
+}

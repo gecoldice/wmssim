@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.2",
+  "element_id": "AUX-FIRE-01",
+  "element_type": "Generic",
+  "display_name": "消防通道",
+  "glb": "",
+  "lod": { "lod1": "proxy:box" },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 3.0,
+    "aabb": { "length_m": 6.0, "width_m": 1.5 }
+  },
+  "colliders": [],
+  "ports": [],
+  "connector_ids": [],
+  "params": {
+    "geometry": {
+      "length_m": 6.0,
+      "width_m": 1.5,
+      "height_m": 0.15,
+      "orientation_deg": 0
+    },
+    "capability": {},
+    "rules": {
+      "is_fire_lane": true,
+      "keep_clear": true,
+      "min_clear_width_m": 1.5
+    },
+    "interface": {}
+  },
+  "visual": { "proxy": "box" },
+  "meta": {
+    "element_library_id": "AUX-FIRE-01",
+    "flows": [],
+    "notes": "proxy only · slice11 placeable 6×1.5×0.15 · fire keep-clear · no GLB",
+    "proxy": true
+  }
+}

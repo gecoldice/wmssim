@@ -21,6 +21,9 @@ class InventoryLedger:
         self.inbound = 0.0
         self.outbound = 0.0
         self.in_transit = 0.0
+        self.converted = 0.0
+        self.cases_created = 0.0
+        self.cases_on_hand: Dict[str, float] = {}
         for row in initial:
             loc = row.get("locationInstanceId")
             qty = float(row.get("quantity") or 0)
@@ -88,9 +91,17 @@ class InventoryLedger:
         self.in_transit -= qty
         self.outbound += qty
 
+    def convert_to_cases(self, pallet_qty: float, cases: float, station_id: str) -> None:
+        if self.in_transit + 1e-9 < pallet_qty:
+            raise DesError("COMPUTATION_FAILED", "拆托时没有在途托盘", {"qty": pallet_qty})
+        self.in_transit -= pallet_qty
+        self.converted += pallet_qty
+        self.cases_created += cases
+        self.cases_on_hand[station_id] = self.cases_on_hand.get(station_id, 0.0) + cases
+
     def conservation(self) -> Dict[str, Any]:
         ending = sum(self.on_hand.values())
-        residual = self.initial + self.inbound - (ending + self.in_transit + self.outbound)
+        residual = self.initial + self.inbound - (ending + self.in_transit + self.outbound + self.converted)
         return {
             "ok": abs(residual) <= 1e-6,
             "initial": self.initial,
@@ -98,5 +109,9 @@ class InventoryLedger:
             "outbound": self.outbound,
             "ending": ending,
             "inTransit": self.in_transit,
+            "converted": self.converted,
+            "casesCreated": self.cases_created,
+            "casesOnHand": dict(self.cases_on_hand),
+            "onHand": dict(self.on_hand),
             "residual": residual,
         }

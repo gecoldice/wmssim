@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.2",
+  "element_id": "ST-FLOOR-01",
+  "element_type": "FloorStack",
+  "display_name": "地堆",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 3.5,
+    "aabb": {
+      "length_m": 6,
+      "width_m": 4
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "pallet_access",
+      "role": "bidirectional",
+      "x_m": 0,
+      "y_m": 0.15,
+      "z_m": 3,
+      "normal_deg": 0,
+      "family": "pallet"
+    }
+  ],
+  "connector_ids": [
+    "pallet_access"
+  ],
+  "params": {
+    "geometry": {
+      "length_m": 6,
+      "width_m": 4,
+      "max_stack_h_m": 3,
+      "orientation_deg": 0,
+      "aisle_w_m": 3
+    },
+    "capability": {
+      "pallet_slots": 15
+    },
+    "rules": {
+      "block_stacking": true
+    },
+    "interface": {
+      "zone_id": "floor_stack"
+    }
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "ST-FLOOR-01",
+    "flows": [
+      "pallet_full"
+    ],
+    "notes": "proxy only · stacked layer seams · no GLB",
+    "proxy": true
+  }
+}

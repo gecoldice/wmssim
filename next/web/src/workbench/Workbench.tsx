@@ -16,7 +16,7 @@ import { LayoutCanvas, type CanvasHandle } from "../canvas/LayoutCanvas";
 import { copy } from "../copy";
 import { InspectorPanel } from "../inspector/InspectorPanel";
 import { LibraryPanel } from "../library/LibraryPanel";
-import { catalogItem, isPlaceable, type CatalogGroup } from "../library/catalog";
+import { catalogItem, isPlaceable, unsimulatedMessage, type CatalogGroup } from "../library/catalog";
 import { readAccepted, rememberAccepted } from "../persist/lastAccepted.js";
 import { PreparePanel } from "../prepare/PreparePanel";
 import {
@@ -474,6 +474,14 @@ export function Workbench() {
       note(copy.needPrepare);
       return;
     }
+    const blocked = unsimulatedMessage(draft.elements.map((el) => el.typeElementId));
+    if (blocked) {
+      setRun(null);
+      setRejected(blocked);
+      setMode("decision");
+      note(blocked);
+      return;
+    }
     const missing = missingScenario(scenario);
     if (missing.length) {
       note(`${copy.needFields} ${missing.join("、")}`);
@@ -539,6 +547,7 @@ export function Workbench() {
   const aisleAlert = findings.some((finding) => finding.aisle);
   const fireLaneAlert = findings.some((finding) => finding.fireLane);
   const hardCount = new Set([...prepareIds, ...findings.flatMap((finding) => finding.objectIds)]).size;
+  const simBlock = unsimulatedMessage(draft.elements.map((el) => el.typeElementId));
   const statusText =
     normPhase === "fail" || conflictIds.length
       ? "硬冲突"
@@ -546,11 +555,13 @@ export function Workbench() {
         ? "规范未校核"
         : dirty || !layoutRev
           ? "未保存"
-          : prepare?.ready
-            ? "可推演"
-            : prepare
-              ? "准备未通过"
-              : "未准备";
+          : simBlock
+            ? "该类不仿真"
+            : prepare?.ready
+              ? "可推演"
+              : prepare
+                ? "准备未通过"
+                : "未准备";
   const statusClass =
     normPhase === "fail" || conflictIds.length || (prepare && !prepare.ready) ? "status-pill error" : statusText === "可推演" ? "status-pill" : "status-pill warn";
   const widthLabel = draft.widthM && draft.heightM ? `${draft.widthM} × ${draft.heightM} m` : copy.missing;

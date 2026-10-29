@@ -28,6 +28,8 @@ from api.app.store import Store  # noqa: E402
 from des.derive import derive_snapshot  # noqa: E402
 from des.engine import ENGINE_VERSION, run_des  # noqa: E402
 from des.errors import DesError  # noqa: E402
+from des.gold import run_suite  # noqa: E402
+from des.scope import unsimulated_message  # noqa: E402
 from des.validate import validate_layout  # noqa: E402
 
 FX = ROOT / "next" / "fixtures" / "manual-wh"
@@ -401,20 +403,62 @@ def main() -> int:
         bad = exc.code + " " + exc.message
     print("bad snapshot", bad)
     check(bad.startswith("CONTRACT_VERSION"), "snapshot version 0.3 rejected")
+    current_ref = client.get("/api/v1/layouts/layout-ok").json()["layoutRef"]
+    prepared_break = client.post(f"/api/v1/layouts/{current_ref['id']}/prepare-jobs", json={"layoutRef": current_ref})
+    prepared_break_job = poll(client, prepared_break.json()["jobId"])
+    print("break prepare", prepared_break_job.get("status"), (prepared_break_job.get("result") or {}).get("simulationReady"))
     runs_before = len(store.runs)
-    unsupported = client.post(
+    break_job = client.post(
         "/api/v1/simulation-jobs",
         json={
-            "layoutRef": {"id": "layout-ok", "revision": client.get("/api/v1/layouts/layout-ok").json()["layoutRef"]["revision"]},
+            "layoutRef": current_ref,
             "demand": load("demand-break-bulk.json"),
             "operating": operating,
             "runControl": {"horizonSec": 3600, "seedStreams": {"demand": 7}, "metricDefinitionVersion": "metrics-slice-manual-v1"},
         },
     )
-    print("break_bulk", unsupported.status_code, unsupported.text[:240])
+    break_polled = poll(client, break_job.json()["jobId"]) if break_job.status_code == 202 else {}
+    print("break_bulk", break_job.status_code, break_polled.get("status"), (break_polled.get("error") or break_job.text) )
     runs_after = len(store.runs)
-    check(unsupported.status_code == 422 and unsupported.json()["code"] == "UNSUPPORTED_SCENARIO", "break_bulk unsupported")
-    check(runs_after == runs_before, "unsupported call stored no extra run")
+    check(
+        break_polled.get("status") == "failed" and (break_polled.get("error") or {}).get("code") == "FLOWKIND_STATION_MISSING",
+        "break_bulk without a station is rejected",
+    )
+    check(runs_after == runs_before, "rejected break_bulk stored no extra run")
+    conveyed = deepcopy(load("layout-ok.json"))
+    conveyed["elements"].append(
+        {
+            "instanceId": "belt-001",
+            "typeElementId": "CV-BELT-01",
+            "pose": {"x": 20, "y": 16, "yawDeg": 0},
+            "params": {"length_m": 6, "width_m": 0.8, "height_m": 0.9, "orientation_deg": 0},
+            "assetDisposition": "new",
+        }
+    )
+    project_id = client.get("/api/v1/layouts/layout-ok").json()["projectId"]
+    saved_cv = client.post(
+        "/api/v1/layouts/layout-cv/revisions",
+        json={"projectId": project_id, "baseRevision": None, "document": conveyed},
+    )
+    print("cv layout", saved_cv.status_code, saved_cv.text[:240])
+    cv_ref = saved_cv.json().get("layoutRef")
+    prep_cv = client.post("/api/v1/layouts/layout-cv/prepare-jobs", json={"layoutRef": cv_ref}) if cv_ref else None
+    prep_done = poll(client, prep_cv.json()["jobId"]) if prep_cv is not None and prep_cv.status_code == 202 else {}
+    sim_cv = client.post(
+        "/api/v1/simulation-jobs",
+        json={
+            "layoutRef": cv_ref,
+            "demand": demand,
+            "operating": operating,
+            "runControl": {"horizonSec": 3600, "seedStreams": {"demand": 7}, "metricDefinitionVersion": "metrics-slice-manual-v1"},
+        },
+    ) if (prep_done.get("result") or {}).get("simulationReady") else None
+    print("cv sim", None if sim_cv is None else (sim_cv.status_code, sim_cv.text[:300]))
+    runs_cv = len(store.runs)
+    message = "" if sim_cv is None else sim_cv.json().get("message", "")
+    check(sim_cv is not None and sim_cv.status_code == 422 and message.startswith("本切片暂不仿真该类") and "CV-BELT-01" in message, "conveyor placement does not invent KPI")
+    check(runs_cv == runs_after and "即将" not in message, "unsimulated call stored no run")
+    check(unsimulated_message(["MH-AGV-01"]).startswith("本切片暂不仿真该类"), "scope message")
 
     web = (ROOT / "next" / "web" / "src").read_text() if False else ""
     blob = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "next" / "web" / "src").rglob("*") if path.suffix in {".ts", ".tsx", ".js", ".css"})
@@ -501,6 +545,9 @@ def main() -> int:
         "易用性 5 人小样",
     ):
         print(f"{ac}: 未执行")
+
+    print("\n=== G-EDGE / G-BREAK fixtures ===")
+    check(run_suite() == 0, "G-EDGE-01..03 and G-BREAK-01..04")
 
     print("\nfailures", failures)
     return 1 if failures else 0

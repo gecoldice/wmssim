@@ -1,0 +1,188 @@
+{
+  "fixtureId": "G-BREAK-02",
+  "title": "downstream=true：拆托完成生成 piece_pick 箱任务（仅生成断言）",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "工程实测通过（next/scripts/run_gold.py）。仅本夹具。拆托金样过 ≠ 综合仓三流 D1 全过。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_break_02",
+    "layoutRevision": "break_rev_g02",
+    "coord": {
+      "origin": "SW",
+      "unit": "m"
+    },
+    "elements": [
+      {
+        "elementId": "N_bulk",
+        "kind": "node",
+        "pose": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "N_break",
+        "kind": "node",
+        "pose": {
+          "x": 15,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "N_pick",
+        "kind": "node",
+        "pose": {
+          "x": 25,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "SLOT_BULK",
+        "kind": "slot",
+        "pose": {
+          "x": 0,
+          "y": 2
+        },
+        "accessNodeId": "N_bulk",
+        "capacityPallets": 4,
+        "labels": [
+          "bulk"
+        ],
+        "footprint": {
+          "w": 1.2,
+          "d": 1.0
+        }
+      },
+      {
+        "elementId": "ST_BREAK",
+        "kind": "station",
+        "pose": {
+          "x": 15,
+          "y": 2
+        },
+        "accessNodeId": "N_break",
+        "labels": [
+          "break_bulk"
+        ],
+        "capacitySlots": 1,
+        "footprint": {
+          "w": 3,
+          "d": 2
+        }
+      },
+      {
+        "elementId": "ST_PICK",
+        "kind": "station",
+        "pose": {
+          "x": 25,
+          "y": 2
+        },
+        "accessNodeId": "N_pick",
+        "labels": [
+          "piece_pick"
+        ],
+        "capacitySlots": 1,
+        "footprint": {
+          "w": 3,
+          "d": 2
+        }
+      },
+      {
+        "elementId": "SLOT_FACE",
+        "kind": "slot",
+        "pose": {
+          "x": 25,
+          "y": 4
+        },
+        "accessNodeId": "N_pick",
+        "capacityPallets": 2,
+        "labels": [
+          "pick_face"
+        ],
+        "footprint": {
+          "w": 1.2,
+          "d": 1.0
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_bulk_break",
+        "from": "N_bulk",
+        "to": "N_break",
+        "lengthM": 15,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_break_pick",
+        "from": "N_break",
+        "to": "N_pick",
+        "lengthM": 10,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      }
+    ],
+    "defaults": {
+      "processSec": {
+        "break_bulk": 180,
+        "piece_pick": 45
+      }
+    }
+  },
+  "scenario": {
+    "expectedLayoutRevision": "break_rev_g02",
+    "horizonSec": 1200,
+    "seed": 202,
+    "casesPerPallet": 24,
+    "downstreamPiecePick": true,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_bulk",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.2
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "TB1",
+        "flowKind": "break_bulk",
+        "qtyPallets": 1,
+        "originId": "SLOT_BULK",
+        "destId": "ST_BREAK",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": {
+      "SLOT_BULK": {
+        "pallets": 1
+      }
+    }
+  },
+  "expected": {
+    "mustReject": false,
+    "taskStatus": {
+      "TB1": "done"
+    },
+    "downstreamGenerated": {
+      "flowKind": "piece_pick",
+      "minTaskCount": 1,
+      "totalCases": 24,
+      "parentTaskId": "TB1",
+      "assert": "拆托完成后生成箱任务，合计箱数=casesPerPallet；不强制本夹具内箱任务 done"
+    },
+    "kpiHonesty": "生成断言通 ≠ piece_pick 运行时 / D1 全过"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "d1AllFlows": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

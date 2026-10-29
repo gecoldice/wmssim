@@ -1,0 +1,73 @@
+{
+  "schema_version": "0.2",
+  "element_id": "ST-PAL-01",
+  "element_type": "PalletRack",
+  "display_name": "托盘货架",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 6,
+    "aabb": {
+      "length_m": 13.5,
+      "width_m": 1.1
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "pick_face",
+      "role": "bidirectional",
+      "x_m": 0,
+      "y_m": 0.75,
+      "z_m": 0.55,
+      "normal_deg": 0,
+      "family": "pallet"
+    }
+  ],
+  "connector_ids": [
+    "pick_face"
+  ],
+  "params": {
+    "geometry": {
+      "bay_w_m": 2.7,
+      "bay_d_m": 1.1,
+      "levels": 4,
+      "level_height_m": 1.5,
+      "bays": 5,
+      "aisle_w_m": 3.5,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "load_per_level_kg": 2000,
+      "pallets_per_bay": 2
+    },
+    "rules": {
+      "abc_zone": "A",
+      "max_sku_per_bay": 4
+    },
+    "interface": {
+      "location_prefix": "PAL",
+      "putaway_score": 1
+    }
+  },
+  "soft_margin": {
+    "front_m": 3.5,
+    "back_m": 0.2,
+    "left_m": 0.1,
+    "right_m": 0.1
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "ST-PAL-01",
+    "flows": [
+      "pallet_full"
+    ],
+    "notes": "proxy only · bay upright + level beam seams · no GLB",
+    "proxy": true
+  }
+}

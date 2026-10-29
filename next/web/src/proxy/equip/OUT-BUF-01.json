@@ -1,0 +1,72 @@
+{
+  "schema_version": "0.2",
+  "element_id": "OUT-BUF-01",
+  "element_type": "StagingBuffer",
+  "display_name": "装车缓冲",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 3,
+    "aabb": {
+      "length_m": 6,
+      "width_m": 3
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "pallet_in",
+      "role": "in",
+      "x_m": 0,
+      "y_m": 0.15,
+      "z_m": -3,
+      "normal_deg": 180,
+      "family": "pallet"
+    },
+    {
+      "id": "pallet_out",
+      "role": "out",
+      "x_m": 0,
+      "y_m": 0.15,
+      "z_m": 3,
+      "normal_deg": 0,
+      "family": "pallet"
+    }
+  ],
+  "connector_ids": [
+    "pallet_in",
+    "pallet_out"
+  ],
+  "params": {
+    "geometry": {
+      "length_m": 6,
+      "width_m": 3,
+      "max_stack_h_m": 1.8,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "pallet_slots": 10
+    },
+    "rules": {
+      "max_dwell_min": 180,
+      "fifo": true
+    },
+    "interface": {
+      "zone_id": "ship_buf"
+    }
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "OUT-BUF-01",
+    "flows": [
+      "pallet_full"
+    ],
+    "notes": "proxy only · ship buffer · no GLB",
+    "proxy": true
+  }
+}
