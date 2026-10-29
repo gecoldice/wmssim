@@ -1,0 +1,41 @@
+{
+  "fixtureId": "MX-D3-EB",
+  "title": "综合仓加载即停：修订、无拆托站、缺接入、图不连通",
+  "status": "spec_only",
+  "note": "四案都在进入调度前失败，不返回四卡。",
+  "cases": [
+    {
+      "id": "revision-mismatch",
+      "mutate": "revision",
+      "rejectReasonCode": "LAYOUT_REVISION_MISMATCH"
+    },
+    {
+      "id": "no-break-station",
+      "mutate": "strip-break-station",
+      "rejectReasonCode": "FLOWKIND_STATION_MISSING"
+    },
+    {
+      "id": "missing-access",
+      "mutate": "strip-access",
+      "rejectReasonCode": "NO_ACCESS_NODE"
+    },
+    {
+      "id": "disconnected",
+      "mutate": "drop-edges",
+      "rejectReasonCode": "ROUTE_UNREACHABLE"
+    }
+  ],
+  "expected": {
+    "stopAtLoad": true,
+    "noFakeKpi": true,
+    "kpiHonesty": "拒载通过 ≠ 布局校验产品项全绿。"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "d1AllFlows": false,
+    "sD1UaPass": false,
+    "miniGoldSubstitutesMx": false,
+    "runner": "next/scripts/run_mx.py"
+  }
+}

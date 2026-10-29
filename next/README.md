@@ -28,5 +28,6 @@ npm run dev
 
 - Schema：`next/contracts/`
 - 夹具：`next/fixtures/manual-wh/`
+- 综合仓边占用 + 拆托接测（status 保持 spec_only）：`next/fixtures/mx/ACCEPTANCE_STEPS.md`
 - 四卡核对：`next/fixtures/manual-wh/hand-check.md`
 - 角色说明：`docs/slice-manual/`

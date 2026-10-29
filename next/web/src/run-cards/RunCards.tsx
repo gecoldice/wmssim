@@ -9,6 +9,7 @@ type Props = {
   run: Record<string, unknown> | null;
   stale: string | null;
   rejected: string | null;
+  idleNotice: string | null;
   summary: string;
   simT: number;
   t0: number;
@@ -24,6 +25,7 @@ export function RunCards({
   run,
   stale,
   rejected,
+  idleNotice,
   summary,
   simT,
   t0,
@@ -42,8 +44,11 @@ export function RunCards({
   const secondary = run?.secondary as { completionRate?: number | null; completedTasks?: number; incompleteTasks?: number } | undefined;
   const top = bottle?.topN ?? [];
   const manifest = run?.runManifest as { engineVersion?: string; seedStreams?: Record<string, number> } | undefined;
+  const showCards = Boolean(run) && !rejected;
+  const banner = rejected || (showCards ? null : idleNotice || copy.notRun);
+  const bannerClass = rejected || (banner && banner.startsWith(copy.unsimulated)) ? "rejected" : "decision-idle";
   return (
-    <section className="decision" id="decisionView">
+    <section className="decision" id="decisionView" data-decision-cards={showCards ? "shown" : "hidden"}>
       <div className="decision-top">
         <div>
           <h1>综合仓 · 运营决策</h1>
@@ -64,9 +69,9 @@ export function RunCards({
           </button>
         </div>
       </div>
-      {rejected ? <div className="rejected">{rejected}</div> : null}
-      {stale ? <div className="stale-banner">{stale}</div> : null}
-      <div className="kpis">
+      {banner ? <div className={bannerClass}>{banner}</div> : null}
+      {showCards && stale ? <div className="stale-banner">{stale}</div> : null}
+      {showCards ? <div className="kpis">
         <article className="kpi">
           <div className="kpi-label">{copy.cards.throughput}</div>
           <div className="kpi-value">
@@ -110,8 +115,8 @@ export function RunCards({
             {top[0] ? `等待 ${formatWait(top[0].waitSec ?? null)} 秒 · ${formatRate(top[0].share ?? null)}` : copy.noWaitSample}
           </div>
         </article>
-      </div>
-      <div className="decision-body">
+      </div> : null}
+      {showCards ? <div className="decision-body">
         <div className="replay">
           <div className="replay-head">
             <strong>动线回放</strong>
@@ -179,7 +184,7 @@ export function RunCards({
             </div>
           </div>
         </div>
-      </div>
+      </div> : null}
     </section>
   );
 }

@@ -1,9 +1,12 @@
 import { writeFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server.browser";
 import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE } from "../src/canvas/geom.ts";
 import { catalog, LIBRARY_IDS, SLICE11_IDS, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
 import { EQUIPS } from "../src/proxy/equip-index.ts";
 import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
 import { copy } from "../src/copy.ts";
+import { RunCards } from "../src/run-cards/RunCards.tsx";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
 import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
 import { MIXED_TEMPLATE_ID, asBox, buildFacility, buildLayout, columnsFor, draftFor, elementFromDrop, verdictFor } from "../src/workbench/draft.ts";
@@ -237,8 +240,58 @@ if (conflict.stroke !== "#C44B4B") throw new Error("conflict stroke lost");
 const alone = buildPlaced("ST-OVF-01", { lengthM: 4.8, widthM: 2.4, heightM: 1.5 });
 if (alone.badge !== "代理" || !alone.features.includes("rail")) throw new Error("fallback proxy");
 
+function decisionHtml(props) {
+  return renderToStaticMarkup(
+    createElement(RunCards, {
+      stale: null,
+      simT: 0,
+      t0: 0,
+      t1: 1,
+      playing: false,
+      onSimT: () => {},
+      onTogglePlay: () => {},
+      onBack: () => {},
+      summary: "样例",
+      children: null,
+      ...props,
+    }),
+  );
+}
+const refused = decisionHtml({ run: null, rejected: blocked, idleNotice: null });
+if (!refused.includes('data-decision-cards="hidden"')) throw new Error("refused cards not hidden");
+if (refused.includes('class="kpis"') || refused.includes("托盘吞吐") || refused.includes("—")) {
+  throw new Error(`refused decision leaked a card shell: ${refused}`);
+}
+if (!refused.includes(copy.unsimulated) || !refused.includes("CV-STR-01") || !refused.includes("返回编辑")) {
+  throw new Error(refused);
+}
+const idle = decisionHtml({ run: null, rejected: null, idleNotice: copy.notRun });
+if (!idle.includes('data-decision-cards="hidden"') || idle.includes('class="kpis"') || idle.includes("—") || !idle.includes("未推演")) {
+  throw new Error(idle);
+}
+const shown = decisionHtml({
+  rejected: null,
+  idleNotice: null,
+  run: {
+    cards: {
+      throughput: { value: 1 },
+      wait: { meanSec: 2, p95Sec: 3, sampleCount: 1 },
+      utilization: { byResourceType: [{ resourceType: "forklift", utilization: 0.2 }], byResource: [] },
+      bottleneck: { topN: [{ entityId: "e-aisle", waitSec: 2, share: 1 }] },
+    },
+    secondary: { completionRate: 1, completedTasks: 1, incompleteTasks: 0 },
+    layoutRevision: "lr",
+    runManifest: { engineVersion: "slice-des-0.1", seedStreams: { demand: 42 } },
+    kpiFromUiDemo: false,
+  },
+});
+if (!shown.includes('data-decision-cards="shown"') || !shown.includes('class="kpis"') || !shown.includes("托盘吞吐")) {
+  throw new Error("real run hid the four cards");
+}
+
 const facility = buildFacility(draft, "facility-mixed", "pending");
 const layout = buildLayout(draft, "layout-mixed", "pending", { id: "facility-mixed", revision: "pending" });
 writeFileSync("/tmp/mixed-slice-facility.json", JSON.stringify(facility));
 writeFileSync("/tmp/mixed-slice-layout.json", JSON.stringify(layout));
 console.log("LAYOUT UI PASS", `elements=${draft.elements.length}`, `placeable=${placeable.length}`);
+process.exit(0);

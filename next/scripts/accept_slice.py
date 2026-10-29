@@ -29,6 +29,7 @@ from des.derive import derive_snapshot  # noqa: E402
 from des.engine import ENGINE_VERSION, run_des  # noqa: E402
 from des.errors import DesError  # noqa: E402
 from des.gold import run_suite  # noqa: E402
+from des.mxeval import run_suite as run_mx_suite  # noqa: E402
 from des.scope import unsimulated_message  # noqa: E402
 from des.validate import validate_layout  # noqa: E402
 
@@ -548,6 +549,10 @@ def main() -> int:
 
     print("\n=== G-EDGE / G-BREAK fixtures ===")
     check(run_suite() == 0, "G-EDGE-01..03 and G-BREAK-01..04")
+
+    print("\n=== MX mixed-warehouse edge occupancy + break_bulk ===")
+    print("spec_only stays spec_only; assert pass is not UA S-D1 and not a mini-gold substitute")
+    check(run_mx_suite() == 0, "MX-D1-EB MX-D2-EB MX-D3-EB asserts, status remains spec_only")
 
     print("\nfailures", failures)
     return 1 if failures else 0

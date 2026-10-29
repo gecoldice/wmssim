@@ -1,0 +1,22 @@
+{
+  "fixtureId": "MX-D2-EB",
+  "title": "同一综合仓修订，叉车 3→2",
+  "status": "spec_only",
+  "sameRevisionAs": "MX-D1-EB",
+  "forklifts": [3, 2],
+  "note": "薄 D2。只要求吞吐或等待能口述区分。不把某一侧写成业务更优。",
+  "expected": {
+    "bothComplete": true,
+    "distinguishByThroughputOrWait": true,
+    "forbidUnexplainedIdenticalCards": true,
+    "kpiHonesty": "差分是夹具观察，不是 S-D2 口述结论，也不是接量结论。"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "d1AllFlows": false,
+    "sD1UaPass": false,
+    "miniGoldSubstitutesMx": false,
+    "runner": "next/scripts/run_mx.py"
+  }
+}
