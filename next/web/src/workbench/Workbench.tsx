@@ -867,6 +867,7 @@ export function Workbench() {
           run={run}
           stale={stale}
           rejected={rejected}
+          idleNotice={run || rejected ? null : simBlock || copy.notRun}
           summary={`${projectName || "未命名综合仓"} · 修订 ${run?.layoutRevision ?? copy.notIssued}`}
           simT={simT}
           t0={bounds.t0}

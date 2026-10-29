@@ -1,6 +1,6 @@
 # 仿真说明 · 人工摆放切片
 
-新引擎在 `next/des/`。它不引用旧引擎包。只接受 `flowKind = full_pallet`，否则 `UNSUPPORTED_SCENARIO`，没有吞吐。
+新引擎在 `next/des/`。它不引用旧引擎包。`full_pallet` 和 `break_bulk` 可以跑。单独的 `piece_pick` 是 `UNSUPPORTED_SCENARIO`，不产生运行。拆托同时带小件时只生成箱任务，不跑拣货人路径。通道边按 `maxConcurrent` 占用；图不连通在进入事件循环前拒绝，不发四卡。
 
 速度、取货秒、发运秒、评价时长必须由调用方给出。缺了就拒绝，引擎不填默认值。夹具里的 1.5 m/s、1.2 m/s、10 秒、5 秒和 4 托都标明为测试值。
 

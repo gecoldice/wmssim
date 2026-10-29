@@ -18,6 +18,7 @@ export const copy = {
   testBanner: "已填入测试夹具数值，不是项目默认值。",
   unsupportedType: "这个正式类型不在元素库 v0.1.5，不能放下。",
   unsimulated: "本切片暂不仿真该类",
+  notRun: "未推演",
   libraryHint: "按住拖到画布。松手前看绿色可放、黄色注意、红色拒绝。",
   noAccess: "没有可绑定的接入点。请把货架或地堆放到通道中心线 8 米以内后再松手。",
   view25: "米制 2.5D。缩放只改变视野，不改变占地米数。",

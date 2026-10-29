@@ -24,6 +24,6 @@
 
 没有规划、采用、价目、成本、比较、识图。
 
-`flowKind` 不是 `full_pallet` 时返回 422 `UNSUPPORTED_SCENARIO`，不产生运行。四卡形状以 `schemas/slice/run-result.schema.json` 为准：利用率只有 `byResourceType` 与 `byResource`，没有无类型的 `value`。`kpiFromUiDemo` 固定为 false。
+`full_pallet` 与 `break_bulk` 可以推演。单独的 `piece_pick` 让作业失败（`UNSUPPORTED_SCENARIO`），不写入 run。拆托下游的小件只生成箱任务。四卡形状以 `schemas/slice/run-result.schema.json` 为准：利用率只有 `byResourceType` 与 `byResource`，没有无类型的 `value`。`kpiFromUiDemo` 固定为 false。没有成功的本次运行时，决策页不渲染主四卡。
 
 相对复制来的错误码枚举，本切片追加了 `NOT_SIMULATION_READY`、`LAYOUT_REVISION_MISMATCH`、`ELEMENT_ID`、`NO_RESOURCES`、`NARROW_AISLE`。

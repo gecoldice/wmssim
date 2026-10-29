@@ -8,6 +8,8 @@ the node sequence stays the shortest path.
 
 Speeds and process seconds are required inputs on the flow API. A direct
 gold scenario may omit pick/ship; those durations stay 0 instead of being invented.
+A workload whose access nodes are not connected raises ROUTE_UNREACHABLE
+before the event loop, so a rejected load does not emit cards.
 """
 
 from __future__ import annotations
@@ -880,11 +882,57 @@ class DesEngine:
         )
         self._release(res)
 
+    def _path_ok(self, origin: str, dest: str) -> bool:
+        if not origin or not dest:
+            return False
+        return shortest_path(self.adj, origin, dest) is not None
+
+    def _reject_if_unlinked(self) -> None:
+        """Stop at load when this workload has no aisle path. No events, no cards."""
+        homes = [res.node_id for res in self.resources if res.resource_type == "forklift" and res.node_id]
+        if not homes:
+            return
+        for task in self.tasks.values():
+            dest = task.dest_node
+            if task.direction in {"outbound_ship", "break_bulk"} and not task.origin_node:
+                origins = [
+                    str(slot.get("accessNodeId"))
+                    for slot in self.slots.values()
+                    if slot.get("accessNodeId")
+                    and self.inventory.available(slot["elementId"]) + 1e-9 >= task.qty
+                ]
+                if not dest or not origins:
+                    continue
+                linked = any(
+                    self._path_ok(home, origin) and self._path_ok(origin, dest)
+                    for home in homes
+                    for origin in origins
+                )
+                if not linked:
+                    raise DesError(
+                        "ROUTE_UNREACHABLE",
+                        "通道图不连通，加载失败，未进入调度",
+                        {"taskId": task.task_id, "destNode": dest},
+                    )
+                continue
+            if task.origin_node and dest:
+                linked = any(
+                    self._path_ok(home, task.origin_node) and self._path_ok(task.origin_node, dest)
+                    for home in homes
+                )
+                if not linked:
+                    raise DesError(
+                        "ROUTE_UNREACHABLE",
+                        "通道图不连通，加载失败，未进入调度",
+                        {"taskId": task.task_id, "originNode": task.origin_node, "destNode": dest},
+                    )
+
     def run(self) -> Dict[str, Any]:
         started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         before = deepcopy(self.snapshot_in)
         self._prepare_inputs()
         self._generate()
+        self._reject_if_unlinked()
         while self.pq:
             ev = heapq.heappop(self.pq)
             if ev.t > self.horizon + 1e-9:
