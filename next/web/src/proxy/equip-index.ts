@@ -45,3 +45,14 @@ export const EQUIPS: Record<string, Equip> = {
   "ST-FLOOR-01": stFloor as Equip,
   "ST-PAL-01": stPal as Equip,
 };
+
+/** True lod1 URL when this library id is mounted as GLB (not SVG proxy). */
+export function realGlbUrl(typeId: string): string | null {
+  const equip = EQUIPS[typeId];
+  if (!equip) return null;
+  if (equip.meta?.proxy === true) return null;
+  if (equip.visual?.proxy && equip.visual.proxy !== "none") return null;
+  const url = equip.glb || equip.lod?.lod1;
+  if (typeof url !== "string" || !url || url.startsWith("proxy:")) return null;
+  return url;
+}

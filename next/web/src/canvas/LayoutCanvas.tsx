@@ -1,9 +1,11 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { ColumnMark, Guide, Tone } from "./geom";
 import { columnBox, fireLaneInside, footprintCorners, localToWorld } from "./geom";
 import { ProxyShape } from "./ProxyShape";
+import { GlbBoardLayer, type GlbPose } from "./GlbBoardLayer";
 import { catalogItem } from "../library/catalog";
 import { buildPlaced, interactionStyle } from "../proxy/extrude";
+import { realGlbUrl } from "../proxy/equip-index";
 import type { Actor } from "../run-cards/playback";
 import { trailOf, type Segment } from "../run-cards/playback";
 import type { Draft, PoseEl } from "../workbench/draft";
@@ -192,9 +194,46 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
   const barM = sized && width >= 20 ? 5 : 2;
   const lane = sized ? fireLaneInside(width, height) : null;
 
+  const glbPoses: GlbPose[] = useMemo(() => {
+    if (!sized) return [];
+    const out: GlbPose[] = [];
+    for (const el of draft.elements) {
+      const url = realGlbUrl(el.typeElementId);
+      if (!url) continue;
+      out.push({
+        key: el.instanceId,
+        url,
+        x: el.x,
+        y: el.y,
+        yawDeg: el.yawDeg,
+        selected: selected === el.instanceId,
+        conflict: conflictIds.includes(el.instanceId),
+        tone: liveTone?.id === el.instanceId ? liveTone.tone : undefined,
+      });
+    }
+    if (ghost) {
+      const url = realGlbUrl(ghost.typeId);
+      if (url) {
+        out.push({
+          key: `ghost:${ghost.typeId}`,
+          url,
+          x: ghost.x,
+          y: ghost.y,
+          yawDeg: ghost.yawDeg,
+          ghost: true,
+          tone: ghost.tone,
+        });
+      }
+    }
+    return out;
+  }, [sized, draft.elements, selected, conflictIds, liveTone, ghost]);
+
   return (
     <div className="board-wrap">
       <div className="board-frame" ref={frameRef}>
+        {sized && glbPoses.length ? (
+          <GlbBoardLayer widthPx={view.w} heightPx={view.h} cam={cam} poses={glbPoses} />
+        ) : null}
         <svg
           ref={svgRef}
           className="board"
@@ -436,21 +475,35 @@ function headingOf(trail: Array<{ x: number; y: number }>): number {
 
 function GhostProxy({ ghost, ppm, relief }: { ghost: Ghost; ppm: number; relief: boolean }) {
   const model = buildPlaced(ghost.typeId, { lengthM: ghost.lengthM, widthM: ghost.widthM, heightM: ghost.heightM });
+  const glb = realGlbUrl(ghost.typeId);
+  const corners = footprintCorners(ghost.x, ghost.y, ghost.lengthM, ghost.widthM, ghost.yawDeg);
   return (
     <g>
-      <ProxyShape
-        model={model}
-        x={ghost.x}
-        y={ghost.y}
-        yawDeg={ghost.yawDeg}
-        ppm={ppm}
-        relief={relief}
-        stroke={TONE_STROKE[ghost.tone]}
-        strokePx={2}
-        fill={model.fill}
-        fillAlpha={model.fillAlpha}
-        ghost
-      />
+      {glb ? (
+        <polygon
+          className="glb-footprint"
+          points={corners.map((p) => `${p.x},${p.y}`).join(" ")}
+          fill="none"
+          stroke={TONE_STROKE[ghost.tone]}
+          strokeWidth={2 / ppm}
+          strokeDasharray={`${0.25} ${0.15}`}
+          pointerEvents="none"
+        />
+      ) : (
+        <ProxyShape
+          model={model}
+          x={ghost.x}
+          y={ghost.y}
+          yawDeg={ghost.yawDeg}
+          ppm={ppm}
+          relief={relief}
+          stroke={TONE_STROKE[ghost.tone]}
+          strokePx={2}
+          fill={model.fill}
+          fillAlpha={model.fillAlpha}
+          ghost
+        />
+      )}
       <g transform={`translate(${ghost.x} ${ghost.y}) scale(${1 / ppm} ${-1 / ppm})`} pointerEvents="none">
         <text y={-8} textAnchor="middle" fill="#294246" fontSize={12} fontWeight={700}>
           {ghost.label}
@@ -500,14 +553,16 @@ function Item({
     bays: el.bays,
     levels: el.levels,
   });
+  const glb = realGlbUrl(el.typeElementId);
   const look = interactionStyle(
     { hover: hovered && !selected && !conflict && !tone, selected: selected && !conflict && !tone, conflict: conflict && !tone },
     { fill: model.fill, fillAlpha: model.fillAlpha, stroke: model.stroke, shadowAlpha: model.shadowAlpha },
   );
   const stroke = tone ? TONE_STROKE[tone] : look.stroke;
+  const corners = footprintCorners(el.x, el.y, el.lengthM, el.widthM, el.yawDeg);
   return (
     <g
-      className={`board-item${selected ? " selected" : ""}${conflict ? " conflict" : ""}`}
+      className={`board-item${glb ? " glb-hit" : ""}${selected ? " selected" : ""}${conflict ? " conflict" : ""}`}
       onPointerEnter={() => onHover(el.instanceId)}
       onPointerLeave={() => onHover(null)}
       onPointerDown={(event) => {
@@ -546,25 +601,38 @@ function Item({
           strokeDasharray={`${0.2} ${0.15}`}
         />
       ) : null}
-      <ProxyShape
-        model={model}
-        x={el.x}
-        y={el.y}
-        yawDeg={el.yawDeg}
-        ppm={ppm}
-        relief={relief}
-        stroke={stroke}
-        strokePx={tone ? 2.2 : look.strokePx}
-        fill={look.fill}
-        fillAlpha={look.fillAlpha}
-        badge
-      />
-      <g transform={`translate(${el.x} ${el.y + (relief ? model.heightM * 0.42 : 0)}) scale(${1 / ppm} ${-1 / ppm})`} pointerEvents="none">
+      {glb ? (
+        <polygon
+          className="glb-footprint"
+          points={corners.map((p) => `${p.x},${p.y}`).join(" ")}
+          fill={conflict ? "rgba(196,75,75,0.12)" : selected || hovered ? "rgba(47,111,237,0.08)" : "rgba(255,255,255,0.01)"}
+          stroke={stroke}
+          strokeWidth={(tone ? 2.2 : selected || hovered ? 2 : 1.2) / ppm}
+        />
+      ) : (
+        <ProxyShape
+          model={model}
+          x={el.x}
+          y={el.y}
+          yawDeg={el.yawDeg}
+          ppm={ppm}
+          relief={relief}
+          stroke={stroke}
+          strokePx={tone ? 2.2 : look.strokePx}
+          fill={look.fill}
+          fillAlpha={look.fillAlpha}
+          badge
+        />
+      )}
+      <g
+        transform={`translate(${el.x} ${el.y + (glb ? el.widthM / 2 + 0.35 : relief ? model.heightM * 0.42 : 0)}) scale(${1 / ppm} ${-1 / ppm})`}
+        pointerEvents="none"
+      >
         <text y={-6} textAnchor="middle" fill="#294246" fontSize={12} fontWeight={700}>
           {spec?.name ?? el.typeElementId}
         </text>
         <text y={10} textAnchor="middle" fill="#5A6570" fontSize={10}>
-          {`${el.instanceId} · ${trim(el.lengthM)}×${trim(el.widthM)} m`}
+          {`${el.instanceId} · ${trim(el.lengthM)}×${trim(el.widthM)} m${glb ? " · GLB" : ""}`}
         </text>
       </g>
     </g>

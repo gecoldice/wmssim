@@ -3,9 +3,9 @@
   "element_id": "IN-DOCK-01",
   "element_type": "Dock",
   "display_name": "入库月台",
-  "glb": "",
+  "glb": "/assets/p0/IN-DOCK-01/lod1.glb",
   "lod": {
-    "lod1": "proxy:box"
+    "lod1": "/assets/p0/IN-DOCK-01/lod1.glb"
   },
   "footprint": {
     "kind": "aabb",
@@ -73,14 +73,14 @@
     "right_m": 0.3
   },
   "visual": {
-    "proxy": "box"
+    "proxy": "none"
   },
   "meta": {
     "element_library_id": "IN-DOCK-01",
     "flows": [
       "pallet_full"
     ],
-    "notes": "proxy only · dock platform + door recess · no GLB",
-    "proxy": true
+    "notes": "LOD1 GLB 已交 · 平台+门洞感 · 无人形 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
   }
 }

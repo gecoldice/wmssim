@@ -3,12 +3,17 @@
   "element_id": "MH-FORK-01",
   "element_type": "AisleSegment",
   "display_name": "叉车作业区",
-  "glb": "",
-  "lod": { "lod1": "proxy:box" },
+  "glb": "/assets/p0/MH-FORK-01/lod1.glb",
+  "lod": {
+    "lod1": "/assets/p0/MH-FORK-01/lod1.glb"
+  },
   "footprint": {
     "kind": "aabb",
     "clearance_h_m": 3.5,
-    "aabb": { "length_m": 4.0, "width_m": 2.2 }
+    "aabb": {
+      "length_m": 4.0,
+      "width_m": 2.2
+    }
   },
   "colliders": [],
   "ports": [],
@@ -27,12 +32,16 @@
     },
     "interface": {}
   },
-  "visual": { "proxy": "box" },
+  "visual": {
+    "proxy": "none"
+  },
   "meta": {
     "element_library_id": "MH-FORK-01",
-    "flows": ["pallet_full"],
-    "notes": "proxy only · slice11 placeable 4×2.2 · visual flat height_m≈0.25 for 2.5D · no GLB",
-    "proxy": true,
+    "flows": [
+      "pallet_full"
+    ],
+    "notes": "LOD1 GLB 已交 · 作业区/通道带几何 · 无写实叉车车身 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false,
     "visual_height_m": 0.25
   }
 }

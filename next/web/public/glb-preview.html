@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>切片11 LOD1 GLB 预览</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: #f4f1ea; color: #1f2a24; }
+    header { padding: 12px 16px; border-bottom: 1px solid #d9d2c4; background: #fbf8f2; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    header h1 { margin: 0; font-size: 16px; font-weight: 650; }
+    header select, header button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid #c9c0b0; background: #fff; }
+    #meta { opacity: .75; }
+    #c { width: 100vw; height: calc(100vh - 56px); display:block; background: linear-gradient(#efeae0, #e4ddd0); }
+    .hint { margin-left: auto; opacity: .7; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>返工 LOD1 本机预览</h1>
+    <label>设备 <select id="pick"></select></label>
+    <button id="reset" type="button">复位相机</button>
+    <span id="meta"></span>
+    <span class="hint">拖拽旋转 · 滚轮缩放 · Y-up 1:1</span>
+  </header>
+  <canvas id="c"></canvas>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    const IDS = ["MH-FORK-01", "OUT-PACK-01", "AUX-FIRE-01", "OUT-DOCK-01", "PK-DEPAL-01", "IN-DOCK-01", "ST-FLOOR-01", "AUX-WALL-01", "ST-PAL-01", "MH-HAND-01", "PK-PUT-EACH-01"];
+
+    const canvas = document.getElementById('c');
+    const pick = document.getElementById('pick');
+    const meta = document.getElementById('meta');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xe8e2d6);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 500);
+    camera.position.set(8, 6, 10);
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.target.set(0, 1.2, 0);
+
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+    const hemi = new THREE.HemisphereLight(0xfff6e8, 0x6b7a70, 0.85);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight(0xffffff, 1.15);
+    dir.position.set(6, 12, 4);
+    scene.add(dir);
+
+    const grid = new THREE.GridHelper(40, 40, 0xb7ae9e, 0xd4cdbf);
+    grid.position.y = 0.001;
+    scene.add(grid);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(80, 80),
+      new THREE.MeshStandardMaterial({ color: 0xd9d2c4, roughness: 0.95, metalness: 0 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const loader = new GLTFLoader();
+    let root = null;
+
+    function resize() {
+      const w = canvas.clientWidth || window.innerWidth;
+      const h = canvas.clientHeight || Math.max(320, window.innerHeight - 56);
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function fit(object) {
+      const box = new THREE.Box3().setFromObject(object);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const radius = Math.max(size.x, size.y, size.z, 0.5);
+      controls.target.copy(center);
+      camera.position.set(center.x + radius * 1.6, center.y + radius * 1.1, center.z + radius * 1.8);
+      controls.update();
+      meta.textContent = `AABB ${size.x.toFixed(2)}×${size.y.toFixed(2)}×${size.z.toFixed(2)} m · minY ${box.min.y.toFixed(3)}`;
+    }
+
+    async function load(id) {
+      if (root) { scene.remove(root); root = null; }
+      meta.textContent = '加载中…';
+      const url = `/assets/p0/${id}/lod1.glb`;
+      const gltf = await loader.loadAsync(url);
+      root = gltf.scene;
+      root.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+          if (o.material) {
+            o.material.envMapIntensity = 0.9;
+          }
+        }
+      });
+      scene.add(root);
+      fit(root);
+    }
+
+    IDS.forEach((id) => {
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = id;
+      pick.appendChild(opt);
+    });
+    pick.addEventListener('change', () => load(pick.value));
+    document.getElementById('reset').addEventListener('click', () => { if (root) fit(root); });
+
+    function tick() {
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(tick);
+    }
+    tick();
+    load(IDS[0]);
+  </script>
+</body>
+</html>

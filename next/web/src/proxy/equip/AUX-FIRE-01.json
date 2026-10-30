@@ -3,12 +3,17 @@
   "element_id": "AUX-FIRE-01",
   "element_type": "Generic",
   "display_name": "消防通道",
-  "glb": "",
-  "lod": { "lod1": "proxy:box" },
+  "glb": "/assets/p0/AUX-FIRE-01/lod1.glb",
+  "lod": {
+    "lod1": "/assets/p0/AUX-FIRE-01/lod1.glb"
+  },
   "footprint": {
     "kind": "aabb",
     "clearance_h_m": 3.0,
-    "aabb": { "length_m": 6.0, "width_m": 1.5 }
+    "aabb": {
+      "length_m": 6.0,
+      "width_m": 1.5
+    }
   },
   "colliders": [],
   "ports": [],
@@ -28,11 +33,13 @@
     },
     "interface": {}
   },
-  "visual": { "proxy": "box" },
+  "visual": {
+    "proxy": "none"
+  },
   "meta": {
     "element_library_id": "AUX-FIRE-01",
     "flows": [],
-    "notes": "proxy only · slice11 placeable 6×1.5×0.15 · fire keep-clear · no GLB",
-    "proxy": true
+    "notes": "LOD1 GLB 已交 · 低矮消防净空带 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
   }
 }

@@ -3,9 +3,9 @@
   "element_id": "OUT-PACK-01",
   "element_type": "PackStation",
   "display_name": "复核打包",
-  "glb": "",
+  "glb": "/assets/p0/OUT-PACK-01/lod1.glb",
   "lod": {
-    "lod1": "proxy:box"
+    "lod1": "/assets/p0/OUT-PACK-01/lod1.glb"
   },
   "footprint": {
     "kind": "aabb",
@@ -60,7 +60,7 @@
     "interface": {}
   },
   "visual": {
-    "proxy": "box"
+    "proxy": "none"
   },
   "meta": {
     "element_library_id": "OUT-PACK-01",
@@ -68,7 +68,7 @@
       "small_sort",
       "decant"
     ],
-    "notes": "proxy only · pack bench · no GLB",
-    "proxy": true
+    "notes": "LOD1 GLB 已交 · 打包台设备感 · 无人形 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
   }
 }
