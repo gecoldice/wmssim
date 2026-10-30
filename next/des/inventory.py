@@ -7,15 +7,34 @@ from typing import Any, Dict, List
 from .errors import DesError
 
 
+def location_id(el: Dict[str, Any]) -> str:
+    if el.get("kind") == "node":
+        return str(el.get("elementId") or "")
+    if el.get("instanceId"):
+        return str(el["instanceId"])
+    return str(el.get("elementId") or "")
+
+
 class InventoryLedger:
     def __init__(self, snapshot: Dict[str, Any], initial: List[Dict[str, Any]]) -> None:
         self.capacity: Dict[str, float] = {}
         self.on_hand: Dict[str, float] = {}
+        initial_ids = {str(row.get("locationInstanceId")) for row in initial if row.get("locationInstanceId")}
         for el in snapshot.get("elements") or []:
-            if el.get("kind") == "slot":
+            if el.get("kind") == "node":
+                continue
+            loc = location_id(el)
+            if not loc or loc in self.on_hand:
+                continue
+            kind = el.get("kind")
+            if kind == "slot":
                 cap = float(el.get("capacityPallets") or 0)
-                self.capacity[el["elementId"]] = cap
-                self.on_hand[el["elementId"]] = 0.0
+            elif kind == "staging" or loc in initial_ids:
+                cap = float(el.get("capacityPallets") or 1000)
+            else:
+                continue
+            self.capacity[loc] = cap
+            self.on_hand[loc] = 0.0
         self.reserved: Dict[str, float] = {loc: 0.0 for loc in self.on_hand}
         self.initial = 0.0
         self.inbound = 0.0
@@ -84,6 +103,19 @@ class InventoryLedger:
             raise DesError("INPUT_UNCONFIRMED", f"{loc} 容量不足", {"locationInstanceId": loc})
         self.on_hand[loc] += qty
         self.inbound += qty
+
+    def deposit(self, loc: str, qty: float) -> None:
+        """Move qty from in-transit onto loc. Does not count as inbound."""
+        if self.in_transit + 1e-9 < qty:
+            raise DesError("COMPUTATION_FAILED", "送达时没有在途托盘", {"qty": qty})
+        if loc not in self.on_hand:
+            self.capacity[loc] = max(float(qty), 1000.0)
+            self.on_hand[loc] = 0.0
+            self.reserved[loc] = 0.0
+        if self.on_hand[loc] + qty > self.capacity[loc] + 1e-9:
+            raise DesError("INPUT_UNCONFIRMED", f"{loc} 容量不足", {"locationInstanceId": loc})
+        self.in_transit -= qty
+        self.on_hand[loc] += qty
 
     def ship(self, qty: float) -> None:
         if self.in_transit + 1e-9 < qty:

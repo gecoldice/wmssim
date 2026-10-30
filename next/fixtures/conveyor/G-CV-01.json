@@ -1,0 +1,103 @@
+{
+  "fixtureId": "G-CV-01",
+  "title": "单直线 CV-STR-01：in→out 时长可核",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "spec_only",
+  "note": "规范侧夹具；云端接测前不得标 pass。speed 正式字段 speed_mpm；m/s = speed_mpm/60。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_cv_str_01",
+    "layoutRevision": "cv_rev_g01",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      {
+        "instanceId": "CV1",
+        "elementId": "CV-STR-01",
+        "kind": "conveyor_straight",
+        "pose": { "x": 0, "y": 0, "orientation_deg": 0 },
+        "params": {
+          "length_m": 12,
+          "width_m": 0.9,
+          "height_m": 0.9,
+          "speed_mpm": 30,
+          "throughput_uph": 120,
+          "max_load_kg": 1500,
+          "direction": "forward",
+          "allow_load_types": ["pallet"],
+          "deck_height_m": 0.8
+        },
+        "connector_ids": ["p_in", "p_out"],
+        "ports": [
+          { "id": "p_in", "role": "in" },
+          { "id": "p_out", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "SRC",
+        "elementId": "IN-BUF-01",
+        "kind": "staging",
+        "pose": { "x": -2, "y": 0 },
+        "accessNodeId": "N_src",
+        "labels": ["recv"],
+        "connector_ids": ["to_cv"],
+        "ports": [{ "id": "to_cv", "role": "out" }]
+      },
+      {
+        "instanceId": "DST",
+        "elementId": "OUT-BUF-01",
+        "kind": "staging",
+        "pose": { "x": 14, "y": 0 },
+        "accessNodeId": "N_dst",
+        "labels": ["ship"],
+        "connector_ids": ["from_cv"],
+        "ports": [{ "id": "from_cv", "role": "in" }]
+      },
+      { "elementId": "N_src", "kind": "node", "pose": { "x": -2, "y": 0 } },
+      { "elementId": "N_dst", "kind": "node", "pose": { "x": 14, "y": 0 } }
+    ],
+    "connections": [
+      { "from": { "instanceId": "SRC", "portId": "to_cv" }, "to": { "instanceId": "CV1", "portId": "p_in" } },
+      { "from": { "instanceId": "CV1", "portId": "p_out" }, "to": { "instanceId": "DST", "portId": "from_cv" } }
+    ],
+    "edges": []
+  },
+  "scenario": {
+    "expectedLayoutRevision": "cv_rev_g01",
+    "horizonSec": 300,
+    "seed": 201,
+    "resources": [],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SRC",
+        "destId": "DST",
+        "pathMode": "conveyor",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SRC": 1 }
+  },
+  "expected": {
+    "mustReject": false,
+    "runCompletes": true,
+    "conservationOk": true,
+    "conveyTiming": {
+      "elementId": "CV-STR-01",
+      "instanceId": "CV1",
+      "assert": "enter→exit 时长 ≈ length_m / (speed_mpm/60) = 12 / 0.5 = 24s；容差 ±5%"
+    },
+    "events": { "mustInclude": ["convey_enter", "convey_exit"] },
+    "kpiCards": {
+      "present": ["throughput_pallet_eq_per_h", "wait_mean_sec", "utilization", "bottleneck_top1"],
+      "assert": "四卡有限数非 NaN；不强制业务接量"
+    },
+    "trajectory": {
+      "segmentsNonEmpty": true,
+      "conveyorSegment": { "mode": "conveyor", "elementId": "CV-STR-01" }
+    },
+    "kpiHonesty": "本夹具通 ≠ UA S-D1 / 全库 KPI 绿"
+  }
+}

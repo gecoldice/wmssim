@@ -103,6 +103,8 @@ export const LIBRARY_IDS = [
   "AUX-WALL-01",
 ] as const;
 
+const LINEAR_CONVEYOR = new Set(["CV-STR-01", "CV-ROL-01", "CV-BELT-01"]);
+
 const UNSIMULATED_EXACT = new Set([
   "MH-AGV-01",
   "MH-CHG-01",
@@ -114,7 +116,12 @@ const UNSIMULATED_EXACT = new Set([
   "PK-DEPAL-AUTO-01",
 ]);
 
+export function isLinearConveyor(typeId: string): boolean {
+  return LINEAR_CONVEYOR.has(typeId);
+}
+
 export function isUnsimulated(typeId: string): boolean {
+  if (LINEAR_CONVEYOR.has(typeId)) return false;
   return typeId.startsWith("CV-") || UNSIMULATED_EXACT.has(typeId);
 }
 

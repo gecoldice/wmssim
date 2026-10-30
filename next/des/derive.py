@@ -285,6 +285,12 @@ def derive_snapshot(
         if kind == "station" and tid == "PK-DEPAL-01":
             out["labels"] = ["break_bulk"]
             out["capacitySlots"] = 1
+        if params:
+            out["params"] = dict(params)
+        if isinstance(params.get("ports"), list):
+            out["ports"] = params["ports"]
+        if isinstance(params.get("connector_ids"), list):
+            out["connector_ids"] = params["connector_ids"]
         elements.append(out)
 
     coord = facility.get("coord") or {}

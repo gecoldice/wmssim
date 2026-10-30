@@ -5,12 +5,13 @@ import {
   columnBox,
   DEFAULT_COLUMNS,
   fireLaneInside,
+  footprintCorners,
   projectAccess,
   type AisleLine,
   type BoxEl,
   type ColumnMark,
 } from "../canvas/geom";
-import { catalogItem, instancePrefix, isPlaceable, type CatalogItem } from "../library/catalog";
+import { catalogItem, instancePrefix, isLinearConveyor, isPlaceable, type CatalogItem } from "../library/catalog";
 
 export const MIXED_TEMPLATE_ID = "template.mixed_wh_v0";
 
@@ -32,6 +33,12 @@ export type PoseEl = {
   levels?: number;
   palletsPerBay?: number;
   minClearWidthM?: number;
+  /** Formal conveyor speed. Undefined uses the type default; null means the user cleared it. */
+  speedMpm?: number | null;
+  throughputUph?: number | null;
+  maxLoadKg?: number | null;
+  direction?: string | null;
+  allowLoadTypes?: string[] | null;
 };
 
 export type Draft = {
@@ -163,6 +170,141 @@ export function aisleOf(draft: Draft): AisleLine | null {
   const widthM = parseNum(draft.aisleWidthM);
   if (fromX === null || toX === null || y === null || widthM === null) return null;
   return { fromX, toX, y, widthM };
+}
+
+export type ConveyorLink = {
+  fromInstanceId: string;
+  fromPort: string;
+  toInstanceId: string;
+  toPort: string;
+};
+
+const PORT_TOL_M = 0.05;
+const PORT_SNAP_M = 0.2;
+
+export function conveyorEnds(el: PoseEl): Array<{ role: "in" | "out"; x: number; y: number }> {
+  const yaw = (el.yawDeg * Math.PI) / 180;
+  const dx = Math.cos(yaw);
+  const dy = Math.sin(yaw);
+  const half = el.lengthM / 2;
+  return [
+    { role: "in", x: el.x - dx * half, y: el.y - dy * half },
+    { role: "out", x: el.x + dx * half, y: el.y + dy * half },
+  ];
+}
+
+function closestOnFootprint(el: PoseEl, px: number, py: number): { x: number; y: number; d: number; along: number } {
+  const corners = footprintCorners(el.x, el.y, el.lengthM, el.widthM, el.yawDeg);
+  let best = { x: el.x, y: el.y, d: Infinity, along: 1 };
+  for (let i = 0; i < corners.length; i += 1) {
+    const a = corners[i];
+    const b = corners[(i + 1) % corners.length];
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const len2 = abx * abx + aby * aby;
+    const t = len2 <= 1e-12 ? 0 : Math.max(0, Math.min(1, ((px - a.x) * abx + (py - a.y) * aby) / len2));
+    const x = a.x + abx * t;
+    const y = a.y + aby * t;
+    const d = Math.hypot(x - px, y - py);
+    const edge = Math.hypot(abx, aby) || 1;
+    const along = Math.abs((Math.cos((el.yawDeg * Math.PI) / 180) * abx + Math.sin((el.yawDeg * Math.PI) / 180) * aby) / edge);
+    if (d < best.d) best = { x, y, d, along };
+  }
+  return best;
+}
+
+function headOn(conveyor: PoseEl, endRole: "in" | "out", other: PoseEl, hit: { along: number }): boolean {
+  const yaw = (conveyor.yawDeg * Math.PI) / 180;
+  const axisX = Math.cos(yaw);
+  const axisY = Math.sin(yaw);
+  const vx = other.x - conveyor.x;
+  const vy = other.y - conveyor.y;
+  const vlen = Math.hypot(vx, vy) || 1;
+  const facing = endRole === "out" ? 1 : -1;
+  const align = (facing * (axisX * vx + axisY * vy)) / vlen;
+  return align >= Math.cos((5 * Math.PI) / 180) && hit.along <= Math.sin((5 * Math.PI) / 180) + 1e-6;
+}
+
+export function snapConveyorEnds(el: PoseEl, others: PoseEl[]): { x: number; y: number } {
+  if (!isLinearConveyor(el.typeElementId)) return { x: el.x, y: el.y };
+  let best: { dx: number; dy: number; d: number } | null = null;
+  for (const end of conveyorEnds(el)) {
+    for (const other of others) {
+      if (other.instanceId === el.instanceId) continue;
+      const hit = closestOnFootprint(other, end.x, end.y);
+      if (hit.d > PORT_SNAP_M || !headOn(el, end.role, other, hit)) continue;
+      if (!best || hit.d < best.d) best = { dx: hit.x - end.x, dy: hit.y - end.y, d: hit.d };
+    }
+  }
+  if (!best) return { x: el.x, y: el.y };
+  return { x: el.x + best.dx, y: el.y + best.dy };
+}
+
+export function conveyorLinks(elements: PoseEl[]): ConveyorLink[] {
+  const links: ConveyorLink[] = [];
+  for (const el of elements) {
+    if (!isLinearConveyor(el.typeElementId)) continue;
+    for (const end of conveyorEnds(el)) {
+      let best: { other: PoseEl; d: number; along: number } | null = null;
+      for (const other of elements) {
+        if (other.instanceId === el.instanceId) continue;
+        const hit = closestOnFootprint(other, end.x, end.y);
+        if (hit.d > PORT_TOL_M || !headOn(el, end.role, other, hit)) continue;
+        if (!best || hit.d < best.d) best = { other, d: hit.d, along: hit.along };
+      }
+      if (!best) continue;
+      const neighborPort = `cv_${el.instanceId}_${end.role}`;
+      if (end.role === "in") {
+        links.push({
+          fromInstanceId: best.other.instanceId,
+          fromPort: neighborPort,
+          toInstanceId: el.instanceId,
+          toPort: "p_in",
+        });
+      } else {
+        links.push({
+          fromInstanceId: el.instanceId,
+          fromPort: "p_out",
+          toInstanceId: best.other.instanceId,
+          toPort: neighborPort,
+        });
+      }
+    }
+  }
+  return links;
+}
+
+export function linearEndsLinked(el: PoseEl, links: ConveyorLink[]): boolean {
+  const inn = links.some((link) => link.toInstanceId === el.instanceId && link.toPort === "p_in");
+  const out = links.some((link) => link.fromInstanceId === el.instanceId && link.fromPort === "p_out");
+  return inn && out;
+}
+
+export function conveyorRefusal(draft: Draft): string {
+  const linear = draft.elements.filter((el) => isLinearConveyor(el.typeElementId));
+  if (!linear.length) return "";
+  const missing: string[] = [];
+  for (const el of linear) {
+    const names: string[] = [];
+    if (!(el.lengthM > 0)) names.push("长度");
+    if (!(el.widthM > 0)) names.push("宽度");
+    const speed = el.speedMpm === undefined ? 30 : el.speedMpm;
+    const throughput = el.throughputUph === undefined ? 120 : el.throughputUph;
+    const load = el.maxLoadKg === undefined ? 1500 : el.maxLoadKg;
+    const direction = el.direction === undefined ? "forward" : el.direction;
+    const loads = el.allowLoadTypes === undefined ? ["pallet"] : el.allowLoadTypes;
+    if (speed === null || !(speed > 0)) names.push("速度");
+    if (throughput === null || !(throughput > 0)) names.push("吞吐");
+    if (load === null || !(load > 0)) names.push("载重");
+    if (!direction) names.push("方向");
+    if (!loads || !loads.length) names.push("允许货型");
+    if (names.length) missing.push(`${names.join("、")}（${el.typeElementId}）`);
+  }
+  if (missing.length) return `还差必填参数才能推演：${missing.join("；")}`;
+  const links = conveyorLinks(draft.elements);
+  const open = linear.filter((el) => !linearEndsLinked(el, links));
+  if (open.length) return `输送还没接上：把端口对到邻段或月台后再推演（${open.map((el) => el.typeElementId).join("、")}）`;
+  return "";
 }
 
 export function asBox(el: PoseEl): BoxEl {
@@ -347,7 +489,7 @@ export function buildFacility(draft: Draft, id: string, revision: string) {
   };
 }
 
-function elementParams(el: PoseEl): Record<string, unknown> {
+function elementParams(el: PoseEl, elements: PoseEl[]): Record<string, unknown> {
   const params: Record<string, unknown> = {
     length_m: el.lengthM,
     width_m: el.widthM,
@@ -376,6 +518,28 @@ function elementParams(el: PoseEl): Record<string, unknown> {
       aisle_w_m: el.minClearWidthM ?? 3,
       orientation_deg: el.yawDeg,
     };
+  }
+  if (el.typeElementId.startsWith("CV-")) {
+    const speed = el.speedMpm === undefined ? 30 : el.speedMpm;
+    if (speed !== null) params.speed_mpm = speed;
+    if (isLinearConveyor(el.typeElementId)) {
+      if (el.throughputUph != null) params.throughput_uph = el.throughputUph;
+      else if (el.throughputUph === undefined) params.throughput_uph = 120;
+      if (el.maxLoadKg != null) params.max_load_kg = el.maxLoadKg;
+      else if (el.maxLoadKg === undefined) params.max_load_kg = 1500;
+      params.direction = el.direction === null ? undefined : el.direction || "forward";
+      if (el.direction === null) delete params.direction;
+      params.allow_load_types = el.allowLoadTypes === null ? undefined : el.allowLoadTypes || ["pallet"];
+      if (el.allowLoadTypes === null) delete params.allow_load_types;
+      params.ports = [
+        { id: "p_in", role: "in" },
+        { id: "p_out", role: "out" },
+      ];
+      params.connector_ids = ["p_in", "p_out"];
+      params.conveyorLinks = conveyorLinks(elements).filter(
+        (link) => link.fromInstanceId === el.instanceId || link.toInstanceId === el.instanceId,
+      );
+    }
   }
   if (el.typeElementId === "ST-FLOOR-01") {
     params.levels = 1;
@@ -419,7 +583,7 @@ export function buildLayout(draft: Draft, id: string, revision: string, facility
       instanceId: el.instanceId,
       typeElementId: el.typeElementId,
       pose: { x: el.x, y: el.y, yawDeg: el.yawDeg },
-      params: elementParams(el),
+      params: elementParams(el, draft.elements),
       assetDisposition: "new",
     })),
     aisles,
@@ -572,5 +736,17 @@ export function elementFromDrop(
     levels,
     palletsPerBay: spec.palletsPerBay,
     minClearWidthM: spec.minClearWidthM,
+    ...conveyorDefaults(type),
+  };
+}
+
+function conveyorDefaults(type: PlaceableType): Partial<PoseEl> {
+  if (!type.startsWith("CV-")) return {};
+  return {
+    speedMpm: 30,
+    throughputUph: isLinearConveyor(type) ? 120 : null,
+    maxLoadKg: isLinearConveyor(type) ? 1500 : null,
+    direction: isLinearConveyor(type) ? "forward" : null,
+    allowLoadTypes: isLinearConveyor(type) ? ["pallet"] : null,
   };
 }

@@ -48,7 +48,9 @@ import {
   missingScenario,
   parseNum,
   columnsFor,
+  conveyorRefusal,
   rebindAccess,
+  snapConveyorEnds,
   scenarioKey,
   specOf,
   testScenario,
@@ -115,6 +117,11 @@ function draftFromSaved(facility: Record<string, unknown>, document: Record<stri
         levels: typeof params.levels === "number" ? params.levels : spec.defaultLevels,
         palletsPerBay: typeof params.palletsPerBay === "number" ? params.palletsPerBay : spec.palletsPerBay,
         minClearWidthM: typeof params.minClearWidthM === "number" ? params.minClearWidthM : spec.minClearWidthM,
+        speedMpm: typeof params.speed_mpm === "number" ? params.speed_mpm : type.startsWith("CV-") ? 30 : undefined,
+        throughputUph: typeof params.throughput_uph === "number" ? params.throughput_uph : undefined,
+        maxLoadKg: typeof params.max_load_kg === "number" ? params.max_load_kg : undefined,
+        direction: typeof params.direction === "string" ? params.direction : undefined,
+        allowLoadTypes: Array.isArray(params.allow_load_types) ? params.allow_load_types.map(String) : undefined,
       },
     ];
   });
@@ -482,6 +489,14 @@ export function Workbench() {
       note(blocked);
       return;
     }
+    const conveyorStop = conveyorRefusal(draft);
+    if (conveyorStop) {
+      setRun(null);
+      setRejected(conveyorStop);
+      setMode("decision");
+      note(conveyorStop);
+      return;
+    }
     const missing = missingScenario(scenario);
     if (missing.length) {
       note(`${copy.needFields} ${missing.join("、")}`);
@@ -522,8 +537,11 @@ export function Workbench() {
       setMode("decision");
       note("推演完成");
     } catch (error) {
+      const raw = error instanceof Error ? error.message : "";
+      const human =
+        raw.includes(copy.unsimulated) || raw.includes(copy.conveyorUnlinked) || raw.includes(copy.missingParams);
       setRun(null);
-      setRejected(`${copy.simFail} ${error instanceof Error ? error.message : ""}`);
+      setRejected(human ? raw : `${copy.simFail} ${raw}`);
       setMode("decision");
     } finally {
       setBusy(false);
@@ -616,7 +634,11 @@ export function Workbench() {
           facilityW,
           facilityH,
         );
-        const probe = { ...current, x: snapped.x, y: snapped.y };
+        const portSnap = snapConveyorEnds(
+          { ...current, x: snapped.x, y: snapped.y },
+          base.elements.filter((el) => el.instanceId !== id),
+        );
+        const probe = { ...current, x: portSnap.x, y: portSnap.y };
         const verdict = verdictFor(base, probe, id);
         const stored: PoseEl = {
           ...probe,

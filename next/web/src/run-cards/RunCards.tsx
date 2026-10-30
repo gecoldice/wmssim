@@ -45,6 +45,10 @@ export function RunCards({
   const top = bottle?.topN ?? [];
   const manifest = run?.runManifest as { engineVersion?: string; seedStreams?: Record<string, number> } | undefined;
   const showCards = Boolean(run) && !rejected;
+  const conveyor = (run?.secondary as { conveyor?: { segments?: Array<{ instanceId?: string; occupancy?: number | null }>; handoffQueueSec?: number } } | undefined)
+    ?.conveyor;
+  const replaySegments = ((run?.trajectory as { segments?: Array<{ mode?: string }> } | undefined)?.segments ?? []);
+  const hasConveyorReplay = replaySegments.some((segment) => segment.mode === "conveyor");
   const banner = rejected || (showCards ? null : idleNotice || copy.notRun);
   const bannerClass = rejected || (banner && banner.startsWith(copy.unsimulated)) ? "rejected" : "decision-idle";
   return (
@@ -120,7 +124,9 @@ export function RunCards({
         <div className="replay">
           <div className="replay-head">
             <strong>动线回放</strong>
-            <span style={{ fontSize: 11, color: "#8aa09c" }}>按本次 trajectory.segments 插值</span>
+            <span style={{ fontSize: 11, color: "#8aa09c" }}>
+              按本次 trajectory.segments 插值{hasConveyorReplay ? `。${copy.conveyorReplay}` : ""}
+            </span>
           </div>
           <div className="replay-board">{children}</div>
           <div className="replay-controls">
@@ -160,6 +166,24 @@ export function RunCards({
               ))
             )}
           </div>
+          {conveyor ? (
+            <div className="panel-section">
+              <div className="panel-row">
+                <h3>输送段占用</h3>
+                <span className="mini-tag">不进主四卡</span>
+              </div>
+              {(conveyor.segments ?? []).map((row) => (
+                <div className="delta" key={row.instanceId}>
+                  <span>{row.instanceId}</span>
+                  <b>{formatRate(row.occupancy ?? null)}</b>
+                </div>
+              ))}
+              <div className="delta">
+                <span>接驳口排队</span>
+                <b>{formatWait(conveyor.handoffQueueSec ?? 0)} 秒</b>
+              </div>
+            </div>
+          ) : null}
           <div className="panel-section">
             <div className="panel-row">
               <h3>运行信息</h3>

@@ -457,7 +457,14 @@ def main() -> int:
     print("cv sim", None if sim_cv is None else (sim_cv.status_code, sim_cv.text[:300]))
     runs_cv = len(store.runs)
     message = "" if sim_cv is None else sim_cv.json().get("message", "")
-    check(sim_cv is not None and sim_cv.status_code == 422 and message.startswith("本切片暂不仿真该类") and "CV-BELT-01" in message, "conveyor placement does not invent KPI")
+    check(
+        sim_cv is not None
+        and sim_cv.status_code == 422
+        and message.startswith("还差必填参数才能推演")
+        and "CV-BELT-01" in message
+        and "—" not in message,
+        "unconnected belt does not invent KPI",
+    )
     check(runs_cv == runs_after and "即将" not in message, "unsimulated call stored no run")
     check(unsimulated_message(["MH-AGV-01"]).startswith("本切片暂不仿真该类"), "scope message")
 
