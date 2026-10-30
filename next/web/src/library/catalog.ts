@@ -21,7 +21,7 @@ export type CatalogItem = {
   minClearWidthM?: number;
 };
 
-/** Formal library v0.1.5 ids, in panel order IN → ST → PK → CV → MH → OUT → AUX. */
+/** Formal library v0.1.6 ids, in panel order IN → ST → PK → CV → MH → OUT → AUX. */
 export const LIBRARY_IDS = [
   "IN-DOCK-01",
   "IN-BUF-01",
