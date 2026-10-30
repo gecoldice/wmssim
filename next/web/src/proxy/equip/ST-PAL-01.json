@@ -3,9 +3,9 @@
   "element_id": "ST-PAL-01",
   "element_type": "PalletRack",
   "display_name": "托盘货架",
-  "glb": "",
+  "glb": "/assets/p0/ST-PAL-01/lod1.glb",
   "lod": {
-    "lod1": "proxy:box"
+    "lod1": "/assets/p0/ST-PAL-01/lod1.glb"
   },
   "footprint": {
     "kind": "aabb",
@@ -60,14 +60,14 @@
     "right_m": 0.1
   },
   "visual": {
-    "proxy": "box"
+    "proxy": "none"
   },
   "meta": {
     "element_library_id": "ST-PAL-01",
     "flows": [
       "pallet_full"
     ],
-    "notes": "proxy only · bay upright + level beam seams · no GLB",
-    "proxy": true
+    "notes": "LOD1 GLB 已交 · 参数化立柱/横梁/层感 · 无人形 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
   }
 }

@@ -3,9 +3,9 @@
   "element_id": "ST-FLOOR-01",
   "element_type": "FloorStack",
   "display_name": "地堆",
-  "glb": "",
+  "glb": "/assets/p0/ST-FLOOR-01/lod1.glb",
   "lod": {
-    "lod1": "proxy:box"
+    "lod1": "/assets/p0/ST-FLOOR-01/lod1.glb"
   },
   "footprint": {
     "kind": "aabb",
@@ -49,14 +49,14 @@
     }
   },
   "visual": {
-    "proxy": "box"
+    "proxy": "none"
   },
   "meta": {
     "element_library_id": "ST-FLOOR-01",
     "flows": [
       "pallet_full"
     ],
-    "notes": "proxy only · stacked layer seams · no GLB",
-    "proxy": true
+    "notes": "LOD1 GLB 已交 · 地堆占位+堆高层感 · 无写实托盘雕塑 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
   }
 }

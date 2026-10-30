@@ -3,12 +3,17 @@
   "element_id": "PK-DEPAL-01",
   "element_type": "DecantStation",
   "display_name": "拆托工位",
-  "glb": "",
-  "lod": { "lod1": "proxy:box" },
+  "glb": "/assets/p0/PK-DEPAL-01/lod1.glb",
+  "lod": {
+    "lod1": "/assets/p0/PK-DEPAL-01/lod1.glb"
+  },
   "footprint": {
     "kind": "aabb",
     "clearance_h_m": 2.2,
-    "aabb": { "length_m": 3.2, "width_m": 2.0 }
+    "aabb": {
+      "length_m": 3.2,
+      "width_m": 2.0
+    }
   },
   "colliders": [],
   "ports": [
@@ -40,7 +45,11 @@
       "family": "pallet"
     }
   ],
-  "connector_ids": ["pallet_in", "case_out", "empty_pallet_out"],
+  "connector_ids": [
+    "pallet_in",
+    "case_out",
+    "empty_pallet_out"
+  ],
   "params": {
     "geometry": {
       "length_m": 3.2,
@@ -62,11 +71,15 @@
       "empty_pallet_out_port": "empty_pallet_out"
     }
   },
-  "visual": { "proxy": "box" },
+  "visual": {
+    "proxy": "none"
+  },
   "meta": {
     "element_library_id": "PK-DEPAL-01",
-    "flows": ["decant"],
-    "notes": "proxy only · slice11 placeable 3.2×2×1.6 · no GLB",
-    "proxy": true
+    "flows": [
+      "decant"
+    ],
+    "notes": "LOD1 GLB 已交 · 拆托工位台面/作业区 · 无人形 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
   }
 }

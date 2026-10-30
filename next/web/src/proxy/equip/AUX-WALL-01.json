@@ -3,12 +3,17 @@
   "element_id": "AUX-WALL-01",
   "element_type": "Generic",
   "display_name": "墙体与门洞",
-  "glb": "",
-  "lod": { "lod1": "proxy:box" },
+  "glb": "/assets/p0/AUX-WALL-01/lod1.glb",
+  "lod": {
+    "lod1": "/assets/p0/AUX-WALL-01/lod1.glb"
+  },
   "footprint": {
     "kind": "aabb",
     "clearance_h_m": 3.2,
-    "aabb": { "length_m": 8.0, "width_m": 0.3 }
+    "aabb": {
+      "length_m": 8.0,
+      "width_m": 0.3
+    }
   },
   "colliders": [],
   "ports": [],
@@ -29,11 +34,13 @@
     },
     "interface": {}
   },
-  "visual": { "proxy": "box" },
+  "visual": {
+    "proxy": "none"
+  },
   "meta": {
     "element_library_id": "AUX-WALL-01",
     "flows": [],
-    "notes": "proxy only · slice11 placeable 8×0.3×3.2 · door_count=1 · no GLB",
-    "proxy": true
+    "notes": "LOD1 GLB 已交 · 墙体+门洞 · door_count=1 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
   }
 }
