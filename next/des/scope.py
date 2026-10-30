@@ -1,10 +1,15 @@
-"""Types this manual slice will place but will not pretend to simulate."""
+"""Types this manual slice will place but will not pretend to simulate.
+
+CV-STR-01, CV-ROL-01 and CV-BELT-01 have a straight-line runtime.
+Every other CV type, plus AGV / ASRS / crane, still refuses.
+"""
 
 from __future__ import annotations
 
 from typing import Iterable, List
 
-# Conveyors, AGV, cranes, and the P1 auto decant cell have no runtime here.
+_LINEAR = {"CV-STR-01", "CV-ROL-01", "CV-BELT-01"}
+
 _EXACT = {
     "MH-AGV-01",
     "MH-CHG-01",
@@ -18,6 +23,8 @@ _EXACT = {
 
 
 def is_unsimulated(type_id: str) -> bool:
+    if type_id in _LINEAR:
+        return False
     return type_id.startswith("CV-") or type_id in _EXACT
 
 

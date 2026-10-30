@@ -1,0 +1,116 @@
+{
+  "fixtureId": "G-CV-02",
+  "title": "CV-STR 端点接驳月台/货架 accessNode 混布可跑",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "spec_only",
+  "note": "同画布：叉车走通道边；托盘经直线输送段。ROL/BELT 与 STR 同 DES，本夹具用 STR 代表。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_cv_mixed_02",
+    "layoutRevision": "cv_rev_g02",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      {
+        "instanceId": "DOCK_IN",
+        "elementId": "IN-DOCK-01",
+        "kind": "dock",
+        "pose": { "x": 0, "y": 0 },
+        "accessNodeId": "N_dock",
+        "labels": ["recv"],
+        "connector_ids": ["dock_out"],
+        "ports": [{ "id": "dock_out", "role": "out" }]
+      },
+      {
+        "instanceId": "CV1",
+        "elementId": "CV-STR-01",
+        "kind": "conveyor_straight",
+        "pose": { "x": 4, "y": 0, "orientation_deg": 0 },
+        "params": {
+          "length_m": 10,
+          "width_m": 0.9,
+          "orientation_deg": 0,
+          "speed_mpm": 30,
+          "throughput_uph": 120,
+          "max_load_kg": 1500,
+          "direction": "forward",
+          "allow_load_types": ["pallet"]
+        },
+        "connector_ids": ["p_in", "p_out"],
+        "ports": [
+          { "id": "p_in", "role": "in" },
+          { "id": "p_out", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "SLOT_A",
+        "elementId": "ST-PAL-01",
+        "kind": "slot",
+        "pose": { "x": 16, "y": 2 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 4,
+        "connector_ids": ["rack_in"],
+        "ports": [{ "id": "rack_in", "role": "in" }]
+      },
+      { "elementId": "N_dock", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_slot", "kind": "node", "pose": { "x": 16, "y": 0 } },
+      { "elementId": "N_aisle", "kind": "node", "pose": { "x": 16, "y": 0 } }
+    ],
+    "connections": [
+      { "from": { "instanceId": "DOCK_IN", "portId": "dock_out" }, "to": { "instanceId": "CV1", "portId": "p_in" } },
+      { "from": { "instanceId": "CV1", "portId": "p_out" }, "to": { "instanceId": "SLOT_A", "portId": "rack_in" } }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_aisle_slot",
+        "from": "N_aisle",
+        "to": "N_slot",
+        "lengthM": 2,
+        "bidirectional": true,
+        "maxConcurrent": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "cv_rev_g02",
+    "horizonSec": 600,
+    "seed": 202,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_slot",
+        "travelSpeedMps": 1.2,
+        "emptySpeedMps": 1.5
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "DOCK_IN",
+        "destId": "SLOT_A",
+        "pathMode": "conveyor_then_access",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "DOCK_IN": 1 },
+    "edgeOccupancy": { "enabled": true, "defaultMaxConcurrent": 1 }
+  },
+  "expected": {
+    "mustReject": false,
+    "runCompletes": true,
+    "conservationOk": true,
+    "events": { "mustInclude": ["convey_enter", "convey_exit"] },
+    "kpiCards": {
+      "present": ["throughput_pallet_eq_per_h", "wait_mean_sec", "utilization", "bottleneck_top1"],
+      "assert": "混布成功四卡有限数；不判业务优劣"
+    },
+    "trajectory": {
+      "segmentsNonEmpty": true,
+      "assert": "至少一段 mode=conveyor；叉车段仍可为 aisle"
+    },
+    "kpiHonesty": "G-CV-02 通 ≠ MX-D1-EB / S-D1 绿"
+  }
+}

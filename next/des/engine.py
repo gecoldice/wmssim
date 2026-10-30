@@ -1,5 +1,9 @@
 """Event engine for the manual slice.
 
+Straight conveyors CV-STR-01, CV-ROL-01 and CV-BELT-01 travel at
+speed_mpm/60 metres per second when both ends are linked. Other CV types,
+AGV and ASRS still refuse before the scheduler, so they do not emit cards.
+
 full_pallet: arrival, resource wait, empty travel, pick, loaded travel, ship.
 break_bulk: deliver a pallet to a break_bulk station slot, process, convert
 1 pallet into casesPerPallet cases. Edge and station slots use the same
@@ -21,9 +25,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from .conveyor import ConveyorGraph, direct_is_pure_conveyor, raise_if_refused
 from .errors import DesError
 from .graph import build_adjacency, edge_lookup, shortest_path, travel_time_sec
-from .inventory import InventoryLedger
+from .inventory import InventoryLedger, location_id
 from .kpi import compute_cards
 
 ENGINE_VERSION = "slice-des-0.1"
@@ -66,6 +71,13 @@ class _Task:
     station_id: Optional[str] = None
     station_wait_sec: float = 0.0
     cases_created: float = 0.0
+    path_mode: str = ""
+    origin_id: str = ""
+    dest_id: str = ""
+    conv_i: int = 0
+    chain: List[Any] = field(default_factory=list)
+    convey_done: bool = False
+    handoff_ready: float = 0.0
 
 
 @dataclass
@@ -133,6 +145,10 @@ class DesEngine:
         self.downstream_piece = False
         self.stations: Dict[str, Dict[str, Any]] = {}
         self.break_stations: List[Dict[str, Any]] = []
+        self.by_ref: Dict[str, Dict[str, Any]] = {}
+        self.graph: Optional[ConveyorGraph] = None
+        self.occupied: Dict[str, Dict[str, Any]] = {}
+        self.handoff_queue_sec = 0.0
 
     def _require_number(self, bag: Dict[str, Any], key: str, label: str) -> float:
         if key not in bag or bag[key] is None or bag[key] == "":
@@ -152,6 +168,8 @@ class DesEngine:
                 "expectedLayoutRevision 与快照 layoutRevision 不相等",
                 {"expected": self.expected_layout_revision, "actual": rev},
             )
+        raise_if_refused(self.snapshot, self.demand, self.direct)
+        self.graph = ConveyorGraph(self.snapshot)
         self.horizon = self._require_number(self.run_control, "horizonSec", "评价时长")
         svc = self.operating.get("serviceParameters") or {}
         self.travel = self._require_number(svc, "travelSpeedMps", "载货速度")
@@ -181,18 +199,28 @@ class DesEngine:
         self.cases_per_pallet = float(cases) if cases not in (None, "") else None
         if self.direct is not None and self.direct.get("downstream"):
             self.downstream_piece = True
-        self.nodes = {
-            e["elementId"]: e for e in self.snapshot.get("elements") or [] if e.get("kind") == "node"
-        }
-        self.slots = {
-            e["elementId"]: e for e in self.snapshot.get("elements") or [] if e.get("kind") == "slot"
-        }
-        self.docks = {
-            e["elementId"]: e for e in self.snapshot.get("elements") or [] if e.get("kind") == "dock"
-        }
-        self.stations = {
-            e["elementId"]: e for e in self.snapshot.get("elements") or [] if e.get("kind") == "station"
-        }
+        self.nodes = {}
+        self.slots = {}
+        self.docks = {}
+        self.stations = {}
+        self.by_ref = {}
+        for el in self.snapshot.get("elements") or []:
+            if el.get("kind") == "node":
+                self.nodes[el["elementId"]] = el
+                self.by_ref[el["elementId"]] = el
+                continue
+            loc = location_id(el)
+            if loc:
+                self.by_ref[loc] = el
+            eid = el.get("elementId")
+            if eid and eid != loc:
+                self.by_ref.setdefault(eid, el)
+            if el.get("kind") == "slot" and loc:
+                self.slots[loc] = el
+            elif el.get("kind") == "dock" and loc:
+                self.docks[loc] = el
+            elif el.get("kind") == "station" and loc:
+                self.stations[loc] = el
         self.break_stations = [
             s for s in self.stations.values() if "break_bulk" in (s.get("labels") or [])
         ]
@@ -290,6 +318,8 @@ class DesEngine:
                     )
                 )
             if not any(r.resource_type == "forklift" for r in self.resources):
+                if direct_is_pure_conveyor(self.direct):
+                    return
                 raise DesError("NO_RESOURCES", "至少需要 1 台叉车", {"resourceType": "forklift"})
             return
         home = None
@@ -360,8 +390,8 @@ class DesEngine:
         self._schedule(task.arrival_t, PHASE_ARRIVE, "arrival", {"taskId": task.task_id})
 
     def _element(self, element_id: str) -> Dict[str, Any]:
-        el = self.slots.get(element_id) or self.docks.get(element_id) or self.stations.get(element_id)
-        if not el:
+        el = self.by_ref.get(element_id)
+        if not el or el.get("kind") == "node":
             raise DesError("INPUT_UNCONFIRMED", f"找不到元素 {element_id}", {"elementId": element_id})
         if not el.get("accessNodeId"):
             raise DesError("NO_ACCESS_NODE", f"{element_id} 缺有效 accessNodeId", {"elementId": element_id})
@@ -451,10 +481,37 @@ class DesEngine:
     def _generate_direct(self) -> None:
         for spec in self.direct.get("tasks") or []:
             kind = spec.get("flowKind")
-            origin = self._element(spec["originId"])
-            dest = self._element(spec["destId"])
+            mode = str(spec.get("pathMode") or "")
             qty = float(spec.get("qtyPallets") or 1)
             ready = float(spec.get("readyAt") or 0)
+            if mode in {"conveyor", "conveyor_then_access"}:
+                origin = self._element(spec["originId"])
+                dest = self._element(spec["destId"])
+                chain = self.graph.chain(str(spec["originId"]), str(spec["destId"])) if self.graph else []
+                if not chain:
+                    raise DesError(
+                        "CONVEYOR_UNLINKED",
+                        f"输送还没接上：把端口对到邻段或月台后再推演（{spec['originId']} → {spec['destId']}）",
+                    )
+                self._add(
+                    _Task(
+                        task_id=str(spec["taskId"]),
+                        direction="conveyor",
+                        qty=qty,
+                        arrival_t=ready,
+                        location_id=str(spec["originId"]),
+                        origin_id=str(spec["originId"]),
+                        dest_id=str(spec["destId"]),
+                        origin_node=str(origin.get("accessNodeId") or ""),
+                        dest_node=str(dest.get("accessNodeId") or ""),
+                        flow_kind=str(kind or "full_pallet"),
+                        path_mode=mode,
+                        chain=chain,
+                    )
+                )
+                continue
+            origin = self._element(spec["originId"])
+            dest = self._element(spec["destId"])
             if kind == "break_bulk":
                 if "break_bulk" not in (dest.get("labels") or []):
                     raise DesError(
@@ -505,6 +562,8 @@ class DesEngine:
             res = self._idle(pool_id)
             if res is None:
                 head = self.tasks[queue[0]]
+                if head.status == "queued_handoff":
+                    return
                 if head.status != "waiting_resource":
                     head.status = "waiting_resource"
                     self._emit(
@@ -512,7 +571,11 @@ class DesEngine:
                         {"taskId": head.task_id, "entityId": pool_id, "queued": True},
                     )
                 return
-            self._assign(res, self.tasks[queue.pop(0)])
+            task = self.tasks[queue.pop(0)]
+            if task.status == "queued_handoff":
+                self._assign_handoff(res, task)
+            else:
+                self._assign(res, task)
 
     def _fail(self, task: _Task, code: str, message: str) -> None:
         task.status = "failed"
@@ -576,6 +639,12 @@ class DesEngine:
         return res.empty_mps if res.empty_mps else self.empty
 
     def _advance(self, task: _Task, res: _Res) -> None:
+        if task.direction == "conveyor_handoff":
+            if task.edge_i >= len(task.path_edges):
+                self._at_destination(task, res)
+                return
+            self._request_edge(task, res, task.path_edges[task.edge_i])
+            return
         if (
             task.direction in {"outbound_ship", "break_bulk"}
             and not task.picked
@@ -586,6 +655,8 @@ class DesEngine:
         if task.direction == "inbound_putaway" and not task.picked and task.edge_i == task.pickup_after:
             task.picked = True
             self._emit("load", {"taskId": task.task_id, "dockId": task.dock_id})
+            if task.dock_id and task.location_id:
+                self._annotate_chain(task.dock_id, task.location_id, task)
         if task.edge_i >= len(task.path_edges):
             self._at_destination(task, res)
             return
@@ -596,6 +667,8 @@ class DesEngine:
         self.inventory.remove(task.location_id, task.qty)
         task.picked = True
         self._emit("pick", {"taskId": task.task_id, "locationId": task.location_id, "qty": task.qty})
+        if task.dock_id:
+            self._annotate_chain(task.location_id, task.dock_id, task)
         self._schedule(
             self.t + self.pick_sec,
             PHASE_COMPLETE,
@@ -604,6 +677,9 @@ class DesEngine:
         )
 
     def _at_destination(self, task: _Task, res: _Res) -> None:
+        if task.direction == "conveyor_handoff":
+            self._complete_task(task, res)
+            return
         if task.direction == "inbound_putaway":
             assert task.location_id
             self.inventory.add(task.location_id, task.qty)
@@ -832,8 +908,14 @@ class DesEngine:
 
     def _on_arrival(self, task_id: str) -> None:
         task = self.tasks[task_id]
-        task.status = "queued"
         self._emit("arrival", {"taskId": task_id, "direction": task.direction})
+        if task.path_mode in {"conveyor", "conveyor_then_access"}:
+            task.status = "conveying"
+            task.wait_sec = 0.0
+            task.conv_i = 0
+            self._convey_enter(task)
+            return
+        task.status = "queued"
         self.queues[self.forklift_pool].append(task_id)
         self._pump(self.forklift_pool)
 
@@ -893,6 +975,8 @@ class DesEngine:
         if not homes:
             return
         for task in self.tasks.values():
+            if task.path_mode in {"conveyor", "conveyor_then_access"}:
+                continue
             dest = task.dest_node
             if task.direction in {"outbound_ship", "break_bulk"} and not task.origin_node:
                 origins = [
@@ -927,6 +1011,176 @@ class DesEngine:
                         {"taskId": task.task_id, "originNode": task.origin_node, "destNode": dest},
                     )
 
+    def _note_occupied(self, seg: Any, dt: float) -> None:
+        row = self.occupied.setdefault(seg.instance_id, {"elementId": seg.type_id, "occupiedSec": 0.0})
+        row["occupiedSec"] += dt
+
+    def _convey_enter(self, task: _Task) -> None:
+        seg = task.chain[task.conv_i]
+        if task.conv_i == 0:
+            self.inventory.remove(str(task.location_id), task.qty)
+        dt = float(seg.travel_sec)
+        t1 = self.t + dt
+        self._emit(
+            "convey_enter",
+            {
+                "taskId": task.task_id,
+                "elementId": seg.type_id,
+                "instanceId": seg.instance_id,
+            },
+        )
+        self.segments.append(
+            {
+                "t0": self.t,
+                "t1": t1,
+                "from": task.origin_id,
+                "to": task.dest_id,
+                "fromPose": {"x": seg.x0, "y": seg.y0},
+                "toPose": {"x": seg.x1, "y": seg.y1},
+                "resourceId": seg.instance_id,
+                "taskId": task.task_id,
+                "mode": "conveyor",
+                "elementId": seg.type_id,
+                "instanceId": seg.instance_id,
+            }
+        )
+        self._note_occupied(seg, dt)
+        self._schedule(
+            t1,
+            PHASE_TRAVEL,
+            "convey_exit",
+            {
+                "taskId": task.task_id,
+                "elementId": seg.type_id,
+                "instanceId": seg.instance_id,
+            },
+        )
+
+    def _on_convey_exit(self, payload: Dict[str, Any]) -> None:
+        task = self.tasks[payload["taskId"]]
+        self._emit(
+            "convey_exit",
+            {
+                "taskId": task.task_id,
+                "elementId": payload.get("elementId"),
+                "instanceId": payload.get("instanceId"),
+            },
+        )
+        task.conv_i += 1
+        if task.conv_i < len(task.chain):
+            self._convey_enter(task)
+            return
+        self._convey_deliver(task)
+
+    def _ship_dest(self, el: Dict[str, Any]) -> bool:
+        labels = el.get("labels") or []
+        return "ship" in labels
+
+    def _convey_deliver(self, task: _Task) -> None:
+        dest = self.by_ref.get(task.dest_id) or {}
+        if self._ship_dest(dest):
+            self.inventory.ship(task.qty)
+            self._emit("ship", {"taskId": task.task_id, "dockId": task.dest_id, "palletEq": task.qty})
+        else:
+            self.inventory.deposit(task.dest_id, task.qty)
+            self._emit("convey_deliver", {"taskId": task.task_id, "destId": task.dest_id, "palletEq": task.qty})
+        self.outbound_pallet_eq += task.qty
+        task.convey_done = True
+        if task.path_mode == "conveyor_then_access" and any(r.resource_type == "forklift" for r in self.resources):
+            task.handoff_ready = self.t
+            task.status = "queued_handoff"
+            self.queues[self.forklift_pool].append(task.task_id)
+            self._pump(self.forklift_pool)
+            return
+        self._complete_task(task, None)
+
+    def _complete_task(self, task: _Task, res: Optional[_Res]) -> None:
+        task.status = "done"
+        self._emit(
+            "task_complete",
+            {"taskId": task.task_id, "status": "done", "waitSec": task.wait_sec, "direction": task.direction},
+        )
+        if res is not None:
+            self._release(res)
+
+    def _incident_edge(self, node_id: str) -> tuple:
+        for edge_id, edge in self.edges.items():
+            if edge.get("from") == node_id:
+                return edge_id, edge.get("to")
+            if edge.get("bidirectional") and edge.get("to") == node_id:
+                return edge_id, edge.get("from")
+        return None, None
+
+    def _assign_handoff(self, res: _Res, task: _Task) -> None:
+        waited = max(0.0, self.t - task.handoff_ready)
+        if waited > 1e-9:
+            task.wait_sec += waited
+            self.handoff_queue_sec += waited
+            self.entity_wait[res.pool_id] = self.entity_wait.get(res.pool_id, 0.0) + waited
+        edge_id, other = self._incident_edge(res.node_id)
+        if not edge_id or not other or other not in self.nodes:
+            self._complete_task(task, None)
+            return
+        task.direction = "conveyor_handoff"
+        task.path_nodes = [res.node_id, other]
+        task.path_edges = [edge_id]
+        task.edge_i = 0
+        task.picked = True
+        task.pickup_after = -1
+        task.resource_id = res.resource_id
+        task.status = "traveling"
+        res.task_id = task.task_id
+        res.assign_t = self.t
+        self._request_edge(task, res, edge_id)
+
+    def _annotate_chain(self, origin: Optional[str], dest: Optional[str], task: _Task) -> None:
+        if task.path_mode in {"conveyor", "conveyor_then_access"} or not self.graph:
+            return
+        if not origin or not dest:
+            return
+        chain = self.graph.chain(str(origin), str(dest))
+        if not chain:
+            return
+        t = self.t
+        for seg in chain:
+            dt = float(seg.travel_sec)
+            body = {
+                "annotate": True,
+                "taskId": task.task_id,
+                "elementId": seg.type_id,
+                "instanceId": seg.instance_id,
+            }
+            self._schedule(t, PHASE_TRAVEL, "convey_mark", {**body, "phase": "enter"})
+            self._schedule(t + dt, PHASE_TRAVEL, "convey_mark", {**body, "phase": "exit"})
+            self.segments.append(
+                {
+                    "t0": t,
+                    "t1": t + dt,
+                    "from": str(origin),
+                    "to": str(dest),
+                    "fromPose": {"x": seg.x0, "y": seg.y0},
+                    "toPose": {"x": seg.x1, "y": seg.y1},
+                    "resourceId": seg.instance_id,
+                    "taskId": task.task_id,
+                    "mode": "conveyor",
+                    "elementId": seg.type_id,
+                    "instanceId": seg.instance_id,
+                }
+            )
+            self._note_occupied(seg, dt)
+            t += dt
+
+    def _on_convey_mark(self, payload: Dict[str, Any]) -> None:
+        kind = "convey_enter" if payload.get("phase") == "enter" else "convey_exit"
+        self._emit(
+            kind,
+            {
+                "taskId": payload.get("taskId"),
+                "elementId": payload.get("elementId"),
+                "instanceId": payload.get("instanceId"),
+            },
+        )
+
     def run(self) -> Dict[str, Any]:
         started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         before = deepcopy(self.snapshot_in)
@@ -946,6 +1200,10 @@ class DesEngine:
                 self._on_process_done(ev.payload)
             elif ev.kind == "task_complete":
                 self._on_task_complete(ev.payload)
+            elif ev.kind == "convey_exit":
+                self._on_convey_exit(ev.payload)
+            elif ev.kind == "convey_mark":
+                self._on_convey_mark(ev.payload)
             else:
                 raise DesError("COMPUTATION_FAILED", f"未知事件 {ev.kind}")
         if before != self.snapshot_in:
@@ -970,6 +1228,20 @@ class DesEngine:
             outbound_pallet_eq=self.outbound_pallet_eq,
             incomplete_count=len(incomplete),
         )
+        if self.graph and self.graph.linear_elements():
+            kpi["secondary"]["conveyor"] = {
+                "segments": [
+                    {
+                        "instanceId": inst,
+                        "elementId": row["elementId"],
+                        "occupiedSec": row["occupiedSec"],
+                        "occupancy": (row["occupiedSec"] / self.horizon) if self.horizon else None,
+                    }
+                    for inst, row in sorted(self.occupied.items())
+                ],
+                "handoffQueueSec": self.handoff_queue_sec,
+                "definition": "段占用率 = 占用秒 / 评价时长；接驳口排队秒。不进主四卡。",
+            }
         finished = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         revision = self.snapshot["layoutRevision"]
         ship_evidence = [

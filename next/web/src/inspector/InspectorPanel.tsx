@@ -1,7 +1,8 @@
 import { copy } from "../copy";
+import { isLinearConveyor } from "../library/catalog";
 import { SPEC_PACKS, type NormFinding, type NormPhase, type SpecPackId } from "../prepare/norms";
 import type { Draft, PoseEl, ScenarioFields } from "../workbench/draft";
-import { parseNum } from "../workbench/draft";
+import { conveyorLinks, linearEndsLinked, parseNum } from "../workbench/draft";
 
 type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?: string };
 
@@ -127,6 +128,9 @@ export function InspectorPanel({
                     }}
                   />
                 </div>
+              ) : null}
+              {selected.typeElementId.startsWith("CV-") ? (
+                <ConveyorFields draft={draft} selected={selected} onElement={onElement} />
               ) : null}
               <div className="field">
                 <label>接入点</label>
@@ -319,12 +323,113 @@ export function InspectorPanel({
   );
 }
 
+function ConveyorFields({
+  draft,
+  selected,
+  onElement,
+}: {
+  draft: Draft;
+  selected: PoseEl;
+  onElement: (patch: Partial<PoseEl>) => void;
+}) {
+  const linear = isLinearConveyor(selected.typeElementId);
+  const linked = linear && linearEndsLinked(selected, conveyorLinks(draft.elements));
+  const speed = selected.speedMpm === undefined ? 30 : selected.speedMpm;
+  return (
+    <>
+      <div className="field" id="footprintLine">
+        <label>脚印</label>
+        <div className="input-row">
+          <input
+            readOnly
+            value={`${selected.lengthM} × ${selected.widthM} m · ${selected.yawDeg}°`}
+          />
+        </div>
+      </div>
+      <NumberField
+        label="速度"
+        unit="m/min"
+        inputId="speed_mpm"
+        value={speed === null ? "" : String(speed)}
+        placeholder={copy.missing}
+        onChange={(value) => {
+          if (value.trim() === "") {
+            onElement({ speedMpm: null });
+            return;
+          }
+          const parsed = parseNum(value);
+          if (parsed === null) return;
+          onElement({ speedMpm: parsed });
+        }}
+      />
+      <p className="inspector-empty" id="speedMpmNote">
+        正式字段 speed_mpm。引擎按 m/s = speed_mpm / 60 计算。
+      </p>
+      {linear ? (
+        <p className="inspector-empty" id="conveyorLinkNote">
+          {linked ? "两端已对上邻段或月台。" : copy.conveyorUnlinked}
+        </p>
+      ) : (
+        <p className="inspector-empty" id="cvRuntimeNote">
+          {copy.conveyorIdleNote}
+        </p>
+      )}
+      {linear ? (
+        <details>
+          <summary className="panel-row fold-summary">
+            <h3>输送默认参数</h3>
+            <span className="mini-tag">可改</span>
+          </summary>
+          <NumberField
+            label="吞吐"
+            unit="件/时"
+            value={String(selected.throughputUph ?? 120)}
+            onChange={(value) => onElement({ throughputUph: parseNum(value) })}
+          />
+          <NumberField
+            label="载重"
+            unit="kg"
+            value={String(selected.maxLoadKg ?? 1500)}
+            onChange={(value) => onElement({ maxLoadKg: parseNum(value) })}
+          />
+          <div className="field">
+            <label>方向</label>
+            <div className="input-row">
+              <input
+                value={selected.direction || "forward"}
+                onChange={(event) => onElement({ direction: event.target.value })}
+              />
+            </div>
+          </div>
+          <div className="field">
+            <label>允许货型</label>
+            <div className="input-row">
+              <input
+                value={(selected.allowLoadTypes || ["pallet"]).join(",")}
+                onChange={(event) =>
+                  onElement({
+                    allowLoadTypes: event.target.value
+                      .split(",")
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
+            </div>
+          </div>
+        </details>
+      ) : null}
+    </>
+  );
+}
+
 function NumberField({
   label,
   unit,
   value,
   placeholder,
   disabled,
+  inputId,
   onChange,
 }: {
   label: string;
@@ -332,6 +437,7 @@ function NumberField({
   value: string;
   placeholder?: string;
   disabled?: boolean;
+  inputId?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -342,6 +448,7 @@ function NumberField({
       </label>
       <div className="input-row">
         <input
+          id={inputId}
           type={disabled ? "text" : "number"}
           value={value}
           placeholder={placeholder}

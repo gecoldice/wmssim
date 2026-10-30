@@ -1,0 +1,50 @@
+{
+  "fixtureId": "G-CV-03",
+  "title": "拒载/未接多案：缺接驳、断链、非本刀必经、AGV、revision",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "spec_only",
+  "note": "每案加载失败即停；人话拒跑 + 藏四卡；无假 KPI。对齐交互门禁。",
+  "cases": [
+    {
+      "caseId": "R1_missing_connector",
+      "title": "直线段缺 connector_ids / ports",
+      "assert": "拒跑；人话含 elementId；不露四卡数字"
+    },
+    {
+      "caseId": "R2_broken_link",
+      "title": "ports 存在但未连到上下游（断链）",
+      "assert": "拒跑；接驳失败人话；藏四卡"
+    },
+    {
+      "caseId": "R3_curve_on_path",
+      "title": "任务必经路径含 CV-CURVE-01",
+      "assert": "本切片暂不仿真该类；藏四卡"
+    },
+    {
+      "caseId": "R4_merge_on_path",
+      "title": "任务必经路径含 CV-MERGE-01 或 CV-DIV-01 或 CV-BUF-01",
+      "assert": "同 R3；弯道/合流/分流/缓冲均非本刀"
+    },
+    {
+      "caseId": "R5_agv_required",
+      "title": "布局含 MH-AGV 且任务依赖",
+      "assert": "未接类型拒跑；行为与 PR#5 一致"
+    },
+    {
+      "caseId": "R6_revision_mismatch",
+      "title": "expectedLayoutRevision ≠ 快照 layoutRevision",
+      "assert": "拒载；不进调度；无假 KPI"
+    },
+    {
+      "caseId": "R7_allow_load_mismatch",
+      "title": "托盘任务但 allow_load_types 不含 pallet",
+      "assert": "拒跑或挡推演；藏四卡"
+    }
+  ],
+  "expected": {
+    "mustReject": true,
+    "kpiCards": { "hidden": true, "assert": "不露数字假 KPI" },
+    "kpiHonesty": "拒载案通 = 正确拒绝，不是业务绿"
+  }
+}

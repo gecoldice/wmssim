@@ -2,14 +2,15 @@ import { writeFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server.browser";
 import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE } from "../src/canvas/geom.ts";
-import { catalog, LIBRARY_IDS, SLICE11_IDS, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
+import { catalog, LIBRARY_IDS, SLICE11_IDS, isLinearConveyor, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
 import { EQUIPS } from "../src/proxy/equip-index.ts";
 import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
 import { copy } from "../src/copy.ts";
 import { RunCards } from "../src/run-cards/RunCards.tsx";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
 import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
-import { MIXED_TEMPLATE_ID, asBox, buildFacility, buildLayout, columnsFor, draftFor, elementFromDrop, verdictFor } from "../src/workbench/draft.ts";
+import { InspectorPanel } from "../src/inspector/InspectorPanel.tsx";
+import { MIXED_TEMPLATE_ID, asBox, buildFacility, buildLayout, columnsFor, conveyorLinks, conveyorRefusal, draftFor, elementFromDrop, linearEndsLinked, snapConveyorEnds, verdictFor } from "../src/workbench/draft.ts";
 
 const placeable = catalog.filter((item) => item.placeable);
 if (placeable.length !== 78) throw new Error(`expected 78 placeable, got ${placeable.length}`);
@@ -24,16 +25,22 @@ for (const group of seen) {
 }
 if (catalog.some((item) => !item.placeable)) throw new Error("library id left grey");
 if (catalog.some((item) => item.id !== item.id.toUpperCase() || item.id.includes("_"))) throw new Error("short name leaked into catalog");
-for (const id of ["CV-STR-01", "MH-AGV-01", "ST-ASRS-01", "CV-BELT-01", "PK-DEPAL-AUTO-01"]) {
+for (const id of ["CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01", "CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01", "MH-AGV-01", "ST-ASRS-01", "PK-DEPAL-AUTO-01"]) {
   if (!isUnsimulated(id)) throw new Error(`${id} should stay out of the DES`);
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
 }
+for (const id of ["CV-STR-01", "CV-ROL-01", "CV-BELT-01"]) {
+  if (isUnsimulated(id) || !isLinearConveyor(id)) throw new Error(`${id} must be a simulated straight conveyor`);
+  const item = catalog.find((row) => row.id === id);
+  if (!item?.placeable) throw new Error(`${id} must still be draggable`);
+}
 if (isUnsimulated("ST-PAL-01") || isUnsimulated("IN-DOCK-01")) throw new Error("manual types marked unsimulated");
-const blocked = unsimulatedMessage(["CV-STR-01", "MH-AGV-01", "ST-ASRS-01"]);
-if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-STR-01") || blocked.includes("即将")) {
+const blocked = unsimulatedMessage(["CV-CURVE-01", "MH-AGV-01", "ST-ASRS-01"]);
+if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-CURVE-01") || blocked.includes("CV-STR-01") || blocked.includes("即将")) {
   throw new Error(blocked);
 }
+if (copy.conveyorIdleNote.includes("已接入")) throw new Error("curve note implies the runtime is connected");
 if (JSON.stringify(copy).includes("即将")) throw new Error("copy still says 即将");
 
 const draft = draftFor("mixed");
@@ -262,7 +269,7 @@ if (!refused.includes('data-decision-cards="hidden"')) throw new Error("refused 
 if (refused.includes('class="kpis"') || refused.includes("托盘吞吐") || refused.includes("—")) {
   throw new Error(`refused decision leaked a card shell: ${refused}`);
 }
-if (!refused.includes(copy.unsimulated) || !refused.includes("CV-STR-01") || !refused.includes("返回编辑")) {
+if (!refused.includes(copy.unsimulated) || !refused.includes("CV-CURVE-01") || !refused.includes("返回编辑")) {
   throw new Error(refused);
 }
 const idle = decisionHtml({ run: null, rejected: null, idleNotice: copy.notRun });
@@ -289,6 +296,73 @@ if (!shown.includes('data-decision-cards="shown"') || !shown.includes('class="kp
   throw new Error("real run hid the four cards");
 }
 
+const spanCv = elementFromDrop(draft.elements, "CV-STR-01", 20, 12, { id: "n-acc", x: 20, y: 12 });
+if (spanCv.speedMpm !== 30) throw new Error(`straight default speed ${spanCv.speedMpm}`);
+spanCv.lengthM = 29;
+const shifted = snapConveyorEnds(spanCv, draft.elements);
+const placedCv = { ...spanCv, x: shifted.x, y: shifted.y };
+const spanLinks = conveyorLinks([placedCv, ...draft.elements]);
+if (!linearEndsLinked(placedCv, spanLinks)) {
+  throw new Error(`dock span did not link ${JSON.stringify(spanLinks)} @${shifted.x},${shifted.y}`);
+}
+const openCv = conveyorRefusal({ ...draft, elements: [...draft.elements, { ...spanCv, lengthM: 6, x: 8, y: 4 }] });
+if (!openCv.startsWith("输送还没接上") || !openCv.includes("CV-STR-01")) throw new Error(openCv);
+const closedCv = conveyorRefusal({ ...draft, elements: [...draft.elements, placedCv] });
+if (closedCv) throw new Error(closedCv);
+const curveDrop = elementFromDrop(draft.elements, "CV-CURVE-01", 8, 4, { id: "n-acc", x: 8, y: 12 });
+if (curveDrop.speedMpm !== 30) throw new Error("curve inspector speed default missing");
+const saved = buildLayout({ ...draft, elements: [...draft.elements, placedCv] }, "layout-cv", "pending", { id: "facility-mixed", revision: "pending" });
+const savedCv = saved.elements.find((el) => el.typeElementId === "CV-STR-01");
+if (!savedCv || savedCv.params.speed_mpm !== 30 || !savedCv.params.conveyorLinks?.length) {
+  throw new Error(`layout did not keep speed_mpm and links ${JSON.stringify(savedCv && savedCv.params)}`);
+}
+function inspectorHtml(selected, elements) {
+  return renderToStaticMarkup(
+    createElement(InspectorPanel, {
+      draft: { ...draft, elements },
+      onDraft: () => {},
+      selected,
+      onElement: () => {},
+      fields: {
+        fullPallet: true,
+        breakBulk: false,
+        piecePick: false,
+        inbound: "",
+        outbound: "",
+        shiftHours: "",
+        forklifts: "",
+        pickers: "",
+        travel: "",
+        emptySpeed: "",
+        pickSec: "",
+        shipSec: "",
+        windowSec: "",
+      },
+      onField: () => {},
+      onTestValues: () => {},
+      testValues: false,
+      checks: [],
+      prepareReady: null,
+      onRecheck: () => {},
+      normPhase: "off",
+      normSummary: "",
+      normNote: "",
+      specOn: {},
+      findings: [],
+      onToggleSpec: () => {},
+      onAudit: () => {},
+      onFix: () => {},
+    }),
+  );
+}
+const straightHtml = inspectorHtml(placedCv, [...draft.elements, placedCv]);
+if (!straightHtml.includes("脚印") || !straightHtml.includes('id="speed_mpm"') || !straightHtml.includes("30")) {
+  throw new Error("straight inspector hid footprint or speed_mpm");
+}
+const curveHtml = inspectorHtml(curveDrop, [...draft.elements, curveDrop]);
+if (!curveHtml.includes(copy.conveyorIdleNote) || curveHtml.includes("已接入")) {
+  throw new Error("curve inspector implies the runtime is connected");
+}
 const facility = buildFacility(draft, "facility-mixed", "pending");
 const layout = buildLayout(draft, "layout-mixed", "pending", { id: "facility-mixed", revision: "pending" });
 writeFileSync("/tmp/mixed-slice-facility.json", JSON.stringify(facility));

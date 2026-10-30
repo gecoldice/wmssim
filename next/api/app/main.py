@@ -20,6 +20,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from des.conveyor import assess_snapshot
 from des.derive import derive_snapshot
 from des.engine import run_des
 from des.errors import DesError
@@ -429,6 +430,9 @@ def simulate(body: Dict[str, Any]) -> Any:
         )
         if blocked:
             return _error(422, "UNSUPPORTED_SCENARIO", unsimulated_message(blocked), {"typeElementIds": blocked})
+        refused = assess_snapshot(snapshot, demand)
+        if refused:
+            return _error(422, refused[0], refused[1], {"typeElementIds": blocked})
         expected = layout_ref["revision"]
         if snapshot.get("layoutRevision") != expected:
             return _error(
