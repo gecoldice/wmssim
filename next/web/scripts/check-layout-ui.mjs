@@ -2,8 +2,9 @@ import { writeFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server.browser";
 import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE } from "../src/canvas/geom.ts";
-import { catalog, LIBRARY_IDS, SLICE11_IDS, isLinearConveyor, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
-import { EQUIPS } from "../src/proxy/equip-index.ts";
+import { catalog, groupLabels, LIBRARY_IDS, SLICE11_IDS, isLinearConveyor, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
+import { LibraryPanel } from "../src/library/LibraryPanel.tsx";
+import { EQUIPS, realGlbUrl } from "../src/proxy/equip-index.ts";
 import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
 import { copy } from "../src/copy.ts";
 import { RunCards } from "../src/run-cards/RunCards.tsx";
@@ -42,6 +43,71 @@ if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-CURVE-01") ||
 }
 if (copy.conveyorIdleNote.includes("已接入")) throw new Error("curve note implies the runtime is connected");
 if (JSON.stringify(copy).includes("即将")) throw new Error("copy still says 即将");
+
+const panelLabels = ["入库", "存储", "拣选", "输送", "搬运", "出库", "辅助"];
+const panelKeys = ["IN", "ST", "PK", "CV", "MH", "OUT", "AUX"];
+if (groupLabels.map((row) => row[0]).join() !== panelKeys.join()) throw new Error(`group keys ${groupLabels.map((row) => row[0])}`);
+if (groupLabels.map((row) => row[1]).join() !== panelLabels.join()) throw new Error(`group labels ${groupLabels.map((row) => row[1])}`);
+const expectedCounts = { IN: 8, ST: 11, PK: 17, CV: 11, MH: 9, OUT: 9, AUX: 13 };
+for (const key of panelKeys) {
+  const count = catalog.filter((item) => item.group === key).length;
+  if (count !== expectedCounts[key]) throw new Error(`${key} count ${count}`);
+}
+
+function libraryHtml(query, filter) {
+  return renderToStaticMarkup(
+    createElement(LibraryPanel, {
+      dragging: null,
+      query,
+      filter,
+      onQuery: () => {},
+      onFilter: () => {},
+      onLocked: () => {},
+      onDragStart: () => {},
+      onDragMove: () => {},
+      onDragEnd: () => {},
+    }),
+  );
+}
+function attrValues(html, name) {
+  return [...html.matchAll(new RegExp(`${name}="([^"]+)"`, "g"))].map((match) => match[1]);
+}
+function elementIds(html) {
+  return attrValues(html, "data-element-id");
+}
+const allHtml = libraryHtml("", "all");
+if (attrValues(allHtml, "data-catalog-filter").join() !== ["all", ...panelKeys].join()) {
+  throw new Error(`filters ${attrValues(allHtml, "data-catalog-filter")}`);
+}
+if (attrValues(allHtml, "data-catalog-label").join() !== ["全部", ...panelLabels, ...panelLabels].join()) {
+  throw new Error(`labels ${attrValues(allHtml, "data-catalog-label")}`);
+}
+if (attrValues(allHtml, "data-catalog-group").join() !== panelKeys.join()) throw new Error("group order");
+if (elementIds(allHtml).join() !== LIBRARY_IDS.join()) throw new Error(`panel ids ${elementIds(allHtml).length}`);
+if ((allHtml.match(/data-placeable="true"/g) || []).length !== 78) throw new Error("placeable markers");
+if (allHtml.includes("未启用") || allHtml.includes('class="catalog-item locked"') || allHtml.includes("data-placeable=\"false\"")) {
+  throw new Error("panel greyed a library id");
+}
+for (const coarse of ["storage", "dock", "station", "structure"]) {
+  if (attrValues(allHtml, "data-catalog-filter").includes(coarse) || attrValues(allHtml, "data-catalog-group").includes(coarse)) {
+    throw new Error(`coarse group ${coarse}`);
+  }
+}
+for (const banned of ["in_dock", "st_pal_std", "CodeProfile", "G-CV-01", "snap_points", "runtime_bindings", "drag_ghost", "proxy:box"]) {
+  if (allHtml.includes(banned)) throw new Error(`non-element row ${banned}`);
+}
+const byId = libraryHtml("cv-loop-01", "all");
+if (elementIds(byId).join() !== "CV-LOOP-01") throw new Error(`id search ${elementIds(byId)}`);
+if (!byId.includes("输送")) throw new Error("id search dropped the group label");
+const byName = libraryHtml("托盘货架", "all");
+if (elementIds(byName).join() !== "ST-PAL-01") throw new Error(`name search ${elementIds(byName)}`);
+const missed = libraryHtml("没有这种积木", "CV");
+if (elementIds(missed).length || !missed.includes(copy.noCatalogMatch)) throw new Error(missed);
+const onlyCv = libraryHtml("", "CV");
+if (attrValues(onlyCv, "data-catalog-group").join() !== "CV") throw new Error("CV filter leaked another group");
+if (elementIds(onlyCv).length !== 11 || elementIds(onlyCv).some((id) => !id.startsWith("CV-"))) {
+  throw new Error(`CV filter ${elementIds(onlyCv)}`);
+}
 
 const draft = draftFor("mixed");
 if (draft.templateId !== MIXED_TEMPLATE_ID) throw new Error(draft.templateId);
@@ -196,15 +262,25 @@ if (bounds.t0 !== 0 || bounds.t1 !== 20) throw new Error(JSON.stringify(bounds))
 
 const ids = Object.keys(EQUIPS);
 if (ids.length !== 15) throw new Error(`equip count ${ids.length}`);
+let realGlbCount = 0;
+let proxyBoxCount = 0;
 for (const id of ids) {
   const equip = EQUIPS[id];
   if (equip.element_id !== id) throw new Error(`element_id ${id}`);
-  if (equip.visual?.proxy !== "box" || equip.lod?.lod1 !== "proxy:box" || equip.glb) throw new Error(`proxy flag ${id}`);
   if (!portsNearFootprint(equip)) throw new Error(`ports ${id}`);
   const model = buildFromEquip(equip);
-  if (model.badge !== "代理") throw new Error(`badge ${id}`);
   if (model.lengthM <= 0 || model.widthM <= 0 || model.heightM <= 0) throw new Error(`metric ${id}`);
+  const glb = realGlbUrl(id);
+  if (glb) {
+    realGlbCount += 1;
+    if (equip.visual?.proxy !== "none" || model.badge !== null || !glb.endsWith(".glb")) throw new Error(`real glb ${id}`);
+  } else {
+    proxyBoxCount += 1;
+    if (equip.visual?.proxy !== "box" || equip.lod?.lod1 !== "proxy:box" || equip.glb) throw new Error(`proxy flag ${id}`);
+    if (model.badge !== "代理") throw new Error(`badge ${id}`);
+  }
 }
+if (realGlbCount !== 11 || proxyBoxCount !== 4) throw new Error(`glb split real=${realGlbCount} proxy=${proxyBoxCount}`);
 const rackEquip = buildFromEquip(EQUIPS["ST-PAL-01"]);
 if (Math.abs(rackEquip.lengthM - 13.5) > 1e-6 || Math.abs(rackEquip.widthM - 1.1) > 1e-6 || Math.abs(rackEquip.heightM - 6) > 1e-6) {
   throw new Error(`ST-PAL equip ${rackEquip.lengthM} ${rackEquip.widthM} ${rackEquip.heightM}`);
