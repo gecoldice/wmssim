@@ -1,0 +1,99 @@
+{
+  "fixtureId": "G-TURN-01",
+  "title": "直角弯：通道 4 m，转向半径 1.5 m，过得去",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "需要的宽度是半径的 2 倍，即 3 m。4 ≥ 3，所以放行。车已经在货位上，只走载货 L 形。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_turn_01",
+    "layoutRevision": "turn_rev_g01",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_corner", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_ship", "kind": "node", "pose": { "x": 10, "y": 10 } },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": { "x": 0, "y": 2 },
+        "accessNodeId": "N_home",
+        "capacityPallets": 2
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": { "x": 12, "y": 10 },
+        "accessNodeId": "N_ship",
+        "labels": ["ship"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_corner",
+        "from": "N_home",
+        "to": "N_corner",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_corner_ship",
+        "from": "N_corner",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "turn_rev_g01",
+    "horizonSec": 600,
+    "seed": 311,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_home",
+        "travelSpeedMps": 1,
+        "emptySpeedMps": 1,
+        "turningRadiusM": 1.5
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SLOT_A": 1 }
+  },
+  "expected": {
+    "mustReject": false,
+    "conservationOk": true,
+    "taskId": "T1",
+    "pathNodes": ["N_home", "N_corner", "N_ship"],
+    "waitMeanSec": 0,
+    "waitP95Sec": 0,
+    "forkliftBusySec": 20,
+    "palletEq": 1,
+    "throughput": 6,
+    "handCheck": "2×1.5 = 3 ≤ 4，转弯放行。载货 10 m + 10 m，速度 1 m/s，取发 0 秒，占用 20 s。吞吐 6 palletEq/h。",
+    "kpiHonesty": "转弯放行 ≠ 全仓 KPI 绿"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

@@ -48,7 +48,7 @@ const AISLE_FACE = new Set(["IN-DOCK-01", "OUT-DOCK-01", "AUX-FIRE-01"]);
 export function normKeyOf(draft: Draft, selected: SpecPackId[]): string {
   return JSON.stringify({
     selected: [...selected].sort(),
-    site: [draft.widthM, draft.heightM, draft.aisleWidthM, draft.aisleFromX, draft.aisleToX, draft.aisleY],
+    site: [draft.widthM, draft.heightM, draft.aisleWidthM, draft.aisleFromX, draft.aisleToX, draft.aisleY, draft.aisleOneWay, draft.aisleElbowX, draft.aisleElbowY],
     elements: draft.elements.map((el) => [
       el.instanceId,
       el.typeElementId,

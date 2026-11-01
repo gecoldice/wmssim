@@ -1,0 +1,92 @@
+{
+  "fixtureId": "G-WAY-01",
+  "title": "单向通道：车在下游，回不去取货",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "边只允许 N_home → N_slot → N_ship。叉车停在 N_ship。加载即停，不发四卡。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_way_01",
+    "layoutRevision": "way_rev_g01",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_slot", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_ship", "kind": "node", "pose": { "x": 20, "y": 0 } },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 2
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": { "x": 20, "y": 2 },
+        "accessNodeId": "N_ship",
+        "labels": ["ship"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_slot",
+        "from": "N_home",
+        "to": "N_slot",
+        "lengthM": 10,
+        "bidirectional": false,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_slot_ship",
+        "from": "N_slot",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": false,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "way_rev_g01",
+    "horizonSec": 600,
+    "seed": 301,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_ship",
+        "travelSpeedMps": 1,
+        "emptySpeedMps": 1
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SLOT_A": 1 }
+  },
+  "expected": {
+    "mustReject": true,
+    "rejectReasonCode": "ROUTE_UNREACHABLE",
+    "rejectMessageContains": "单向通道走不通",
+    "handCheck": "放开方向后 N_ship 能回到 N_slot，所以拒因是单向，不是断图。",
+    "kpiHonesty": "拒载通过 ≠ 全仓 KPI 绿"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

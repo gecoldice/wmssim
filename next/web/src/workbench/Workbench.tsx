@@ -134,6 +134,9 @@ function draftFromSaved(facility: Record<string, unknown>, document: Record<stri
     aisleFromX: line[0] ? String(line[0].x) : "",
     aisleToX: line.length ? String(line[line.length - 1].x) : "",
     aisleY: line[0] ? String(line[0].y) : "",
+    aisleOneWay: Boolean(aisle?.oneWay),
+    aisleElbowX: line.length >= 3 ? String(line[1].x) : "",
+    aisleElbowY: line.length >= 3 ? String(line[1].y) : "",
     elements,
   };
 }
@@ -545,7 +548,9 @@ export function Workbench() {
         raw.includes(copy.missingParams) ||
         raw.includes("合流至少要两个入口") ||
         raw.includes("分流至少要两个出口") ||
-        raw.includes("缓冲位数未填写");
+        raw.includes("缓冲位数未填写") ||
+        raw.includes("单向通道走不通") ||
+        raw.includes("转不过这个弯");
       setRun(null);
       setRejected(human ? raw : `${copy.simFail} ${raw}`);
       setMode("decision");

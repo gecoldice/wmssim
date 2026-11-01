@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server.browser";
-import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE } from "../src/canvas/geom.ts";
+import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE, projectAccess } from "../src/canvas/geom.ts";
 import { catalog, groupLabels, LIBRARY_IDS, SLICE11_IDS, conveyorPortSpec, isLinearConveyor, isRuntimeConveyor, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
 import { LibraryPanel } from "../src/library/LibraryPanel.tsx";
 import { EQUIPS, realGlbUrl } from "../src/proxy/equip-index.ts";
@@ -11,7 +11,7 @@ import { RunCards } from "../src/run-cards/RunCards.tsx";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
 import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
 import { InspectorPanel } from "../src/inspector/InspectorPanel.tsx";
-import { MIXED_TEMPLATE_ID, asBox, buildFacility, buildLayout, columnsFor, conveyorLinks, conveyorRefusal, draftFor, elementFromDrop, linearEndsLinked, snapConveyorEnds, verdictFor } from "../src/workbench/draft.ts";
+import { MIXED_TEMPLATE_ID, aisleOf, asBox, buildFacility, buildLayout, buildOperating, columnsFor, conveyorLinks, conveyorRefusal, draftFor, elementFromDrop, linearEndsLinked, snapConveyorEnds, testScenario, verdictFor } from "../src/workbench/draft.ts";
 
 const placeable = catalog.filter((item) => item.placeable);
 if (placeable.length !== 78) throw new Error(`expected 78 placeable, got ${placeable.length}`);
@@ -423,6 +423,7 @@ function inspectorHtml(selected, elements) {
         pieceSec: "",
         caseQty: "",
         casesPerPallet: "",
+        turnRadius: "",
       },
       onField: () => {},
       onTestValues: () => {},
@@ -480,6 +481,25 @@ const vertDrop = elementFromDrop(draft.elements, "CV-VERT-01", 8, 4, { id: "n-ac
 const vertHtml = inspectorHtml(vertDrop, [...draft.elements, vertDrop]);
 if (!vertHtml.includes(copy.conveyorIdleNote) || vertHtml.includes("已接入")) {
   throw new Error("vertical inspector implies the runtime is connected");
+}
+const bent = { ...draft, aisleOneWay: true, aisleElbowX: "20", aisleElbowY: "18" };
+const bentLayout = buildLayout(bent, "layout-bend", "pending", { id: "facility-mixed", revision: "pending" });
+const bentLine = bentLayout.aisles[0].centerline;
+if (!bentLayout.aisles[0].oneWay || bentLine.length !== 3 || bentLine[1].x !== 20 || bentLine[1].y !== 18) {
+  throw new Error(`bend aisle ${JSON.stringify(bentLayout.aisles[0])}`);
+}
+const straightHit = projectAccess(20, 12, aisleOf(draft));
+const elbowHit = projectAccess(20, 18, aisleOf(bent));
+if (!straightHit || straightHit.y !== 12) throw new Error(`straight access ${JSON.stringify(straightHit)}`);
+if (!elbowHit || Math.abs(elbowHit.y - 18) > 1e-6 || Math.abs(elbowHit.x - 20) > 1e-6) {
+  throw new Error(`elbow access ${JSON.stringify(elbowHit)}`);
+}
+const operating = buildOperating(testScenario());
+if (operating.serviceParameters.turningRadiusM !== undefined) throw new Error("blank radius was sent");
+const turned = buildOperating({ ...testScenario(), turnRadius: "1.5" });
+if (turned.serviceParameters.turningRadiusM !== 1.5) throw new Error(`radius ${turned.serviceParameters.turningRadiusM}`);
+if (!straightHtml.includes("转向半径") || !straightHtml.includes("单向，只从起点开往终点")) {
+  throw new Error("inspector hid turn radius or one-way");
 }
 const facility = buildFacility(draft, "facility-mixed", "pending");
 const layout = buildLayout(draft, "layout-mixed", "pending", { id: "facility-mixed", revision: "pending" });

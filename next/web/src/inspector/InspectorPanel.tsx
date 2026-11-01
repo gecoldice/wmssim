@@ -74,6 +74,20 @@ export function InspectorPanel({
             <NumberField label="通道起点 X" unit="m" value={draft.aisleFromX} placeholder={copy.missing} onChange={(value) => onDraft({ aisleFromX: value })} />
             <NumberField label="通道终点 X" unit="m" value={draft.aisleToX} placeholder={copy.missing} onChange={(value) => onDraft({ aisleToX: value })} />
           </div>
+          <div className="two-fields">
+            <NumberField label="折点东向" unit="m" value={draft.aisleElbowX} placeholder="不折" onChange={(value) => onDraft({ aisleElbowX: value })} />
+            <NumberField label="折点北向" unit="m" value={draft.aisleElbowY} placeholder="不折" onChange={(value) => onDraft({ aisleElbowY: value })} />
+          </div>
+          <label className="toggle-line">
+            <span>
+              <input
+                type="checkbox"
+                checked={draft.aisleOneWay}
+                onChange={(event) => onDraft({ aisleOneWay: event.target.checked })}
+              />
+              单向，只从起点开往终点
+            </span>
+          </label>
         </section>
         <section className="panel-section">
           <div className="panel-row">
@@ -222,6 +236,14 @@ export function InspectorPanel({
             <NumberField label="拣选时间" unit="秒" value={fields.pieceSec} placeholder={copy.missing} onChange={(value) => onField({ pieceSec: value })} />
             <NumberField label="拣选箱数" unit="箱" value={fields.caseQty} placeholder={copy.missing} onChange={(value) => onField({ caseQty: value })} />
           </div>
+          <NumberField
+            label="转向半径"
+            unit="m"
+            value={fields.turnRadius}
+            placeholder={copy.missing}
+            onChange={(value) => onField({ turnRadius: value })}
+          />
+          <p className="inspector-empty">留空不判断转弯。直角弯要求通道宽至少是半径的 2 倍。</p>
           <NumberField
             label="每托箱数"
             unit="箱/托"

@@ -93,6 +93,11 @@ def evaluate(fixture: Dict[str, Any]) -> List[str]:
         if expected.get("mustReject"):
             if exc.code != expected.get("rejectReasonCode"):
                 problems.append(f"拒载码 {exc.code}，期望 {expected.get('rejectReasonCode')}")
+            needle = expected.get("rejectMessageContains")
+            if needle and needle not in exc.message:
+                problems.append(f"人话不含 {needle!r}：{exc.message}")
+            if fixture.get("fixtureId") == "G-TURN-02":
+                problems.extend(_straight_turn_still_runs(fixture))
             return problems
         problems.append(f"推演失败 {exc.code} {exc.message}")
         return problems
@@ -105,6 +110,7 @@ def evaluate(fixture: Dict[str, Any]) -> List[str]:
     _check_edges(fixture, result, problems)
     _check_break(fixture, result, problems)
     _check_pick(fixture, result, problems)
+    _check_motion(fixture, result, problems)
     return problems
 
 
@@ -269,6 +275,60 @@ def _pallet_initial(fixture: Dict[str, Any], loc: str) -> float:
     if val is None:
         return 0.0
     return float(val)
+
+
+def _path_nodes(result: Dict[str, Any], task_id: str) -> List[str]:
+    segs = sorted(
+        (seg for seg in result["trajectory"]["segments"] if seg.get("taskId") == task_id and seg.get("from")),
+        key=lambda seg: (seg["t0"], seg["t1"]),
+    )
+    if not segs:
+        return []
+    chain = [seg["from"] for seg in segs]
+    chain.append(segs[-1]["to"])
+    return chain
+
+
+def _check_motion(fixture: Dict[str, Any], result: Dict[str, Any], problems: List[str]) -> None:
+    if not str(fixture.get("fixtureId", "")).startswith(("G-WAY", "G-TURN")):
+        return
+    expected = fixture["expected"]
+    cards = result["cards"]
+    _near(cards["wait"]["meanSec"], expected["waitMeanSec"], "等待均值", problems)
+    _near(cards["wait"]["p95Sec"], expected["waitP95Sec"], "等待 P95", problems)
+    _near(cards["throughput"]["value"], expected["throughput"], "吞吐", problems)
+    _near(cards["throughput"]["outboundPalletEq"], expected["palletEq"], "托当量", problems)
+    busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "forklift")
+    _near(busy, expected["forkliftBusySec"], "叉车占用秒", problems)
+    task_id = expected.get("taskId") or "T1"
+    nodes = _path_nodes(result, task_id)
+    if nodes != expected.get("pathNodes"):
+        problems.append(f"路径 {nodes}，期望 {expected.get('pathNodes')}")
+    status = next((row.get("status") for row in result["trajectory"]["tasks"] if row.get("taskId") == task_id), None)
+    if status != "done":
+        problems.append(f"{task_id} 状态 {status}")
+
+
+def _straight_turn_still_runs(fixture: Dict[str, Any]) -> List[str]:
+    """Same radius on a straight aisle is not a turn."""
+    from copy import deepcopy
+
+    clone = deepcopy(fixture)
+    clone["fixtureId"] = "G-TURN-02-straight"
+    for el in clone["layoutSnapshot"]["elements"]:
+        if el.get("elementId") == "N_ship":
+            el["pose"] = {"x": 20, "y": 0}
+    try:
+        result = run_fixture(clone)
+    except DesError as exc:
+        return [f"直道不应因转向半径拒载 {exc.code} {exc.message}"]
+    problems: List[str] = []
+    _near(result["cards"]["throughput"]["value"], 6, "直道吞吐", problems)
+    busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "forklift")
+    _near(busy, 20, "直道叉车占用秒", problems)
+    if _path_nodes(result, "T1") != ["N_home", "N_corner", "N_ship"]:
+        problems.append(f"直道路径 {_path_nodes(result, 'T1')}")
+    return problems
 
 
 def load_fixtures() -> List[Dict[str, Any]]:
