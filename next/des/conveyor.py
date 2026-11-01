@@ -350,6 +350,21 @@ def _used_locations(graph: ConveyorGraph, pairs: Sequence[Tuple[str, str]]) -> s
     return used
 
 
+def cycle_sec_of(el: Dict[str, Any]) -> Optional[float]:
+    """Positive retrieve seconds for one pallet. Missing or non-positive is unset."""
+    params = el.get("params") if isinstance(el.get("params"), dict) else {}
+    raw = params.get("cycle_sec")
+    if isinstance(raw, bool) or raw in (None, ""):
+        return None
+    try:
+        number = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if number <= 0:
+        return None
+    return number
+
+
 def assess_snapshot(
     snapshot: Dict[str, Any],
     demand: Optional[Dict[str, Any]] = None,
@@ -360,6 +375,9 @@ def assess_snapshot(
     blocked = unsimulated_ids(type_of(el) for el in elements)
     if blocked:
         return "UNSUPPORTED_SCENARIO", unsimulated_message(blocked)
+    for el in elements:
+        if type_of(el) == "ST-ASRS-01" and cycle_sec_of(el) is None:
+            return "INPUT_UNCONFIRMED", "立库节拍未填写"
     routed = [el for el in elements if is_routed(el)]
     if not routed:
         return None

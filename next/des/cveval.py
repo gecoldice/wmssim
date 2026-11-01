@@ -4,6 +4,7 @@ Assert pass does not change fixture status. These files stay spec_only.
 That is not UA S-D1 and not a substitute for MX-D1-EB.
 Curve, merge, divert and buffer have a runtime. Vertical, chute, loop and induct still refuse.
 A task that depends on an AGV with no vehicle refuses before the scheduler.
+An ASRS element without cycle_sec refuses before the scheduler.
 """
 
 from __future__ import annotations
@@ -269,6 +270,9 @@ def evaluate_g03(base: Dict[str, Any]) -> List[str]:
     attempt("R6_revision_mismatch", revision, "layoutRevision", "LAYOUT_REVISION_MISMATCH")
     attempt("R7_allow_load_mismatch", load_type, "CV-STR-01", "UNSUPPORTED_SCENARIO")
     for type_id in REJECT_TYPES:
+        if type_id == "ST-ASRS-01":
+            attempt("extra_ST-ASRS-01", insert_type(type_id), "立库节拍未填写", "INPUT_UNCONFIRMED")
+            continue
         attempt(f"extra_{type_id}", insert_type(type_id), type_id, "UNSUPPORTED_SCENARIO")
 
     curve = deepcopy(base)

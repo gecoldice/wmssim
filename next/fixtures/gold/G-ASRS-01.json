@@ -1,0 +1,99 @@
+{
+  "fixtureId": "G-ASRS-01",
+  "title": "立体库按节拍取一托，不走通道",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "节拍 30 秒就是这一托的全部时间。取货和发运不再另加，叉车不进货位。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_asrs_01",
+    "layoutRevision": "asrs_rev_g01",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_slot", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_ship", "kind": "node", "pose": { "x": 20, "y": 0 } },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 2
+      },
+      {
+        "elementId": "ASRS1",
+        "typeElementId": "ST-ASRS-01",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 4 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 2,
+        "params": { "cycle_sec": 30 }
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": { "x": 20, "y": 2 },
+        "accessNodeId": "N_ship",
+        "labels": ["ship"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_slot",
+        "from": "N_home",
+        "to": "N_slot",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_slot_ship",
+        "from": "N_slot",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "asrs_rev_g01",
+    "horizonSec": 600,
+    "seed": 501,
+    "resources": [],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "carrier": "asrs",
+        "qtyPallets": 1,
+        "originId": "ASRS1",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "ASRS1": 1 }
+  },
+  "expected": {
+    "mustReject": false,
+    "conservationOk": true,
+    "taskId": "T1",
+    "waitMeanSec": 0,
+    "waitP95Sec": 0,
+    "asrsBusySec": 30,
+    "palletEq": 1,
+    "throughput": 6,
+    "handCheck": "节拍 30 s，没有通道行驶。等待 0。1 托 / (600/3600) h = 6 palletEq/h。",
+    "kpiHonesty": "一托按节拍取出 ≠ 全仓 KPI 绿"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

@@ -149,6 +149,18 @@ export function InspectorPanel({
               {selected.typeElementId === "MH-AGV-01" ? (
                 <p className="inspector-empty">只有工况里填写了 AGV 数量，推演才会带上这种车。整托任务仍走叉车。数量留空时，这个图标只是摆在图上。</p>
               ) : null}
+              {selected.typeElementId === "ST-ASRS-01" ? (
+                <>
+                  <NumberField
+                    label="立库节拍"
+                    unit="秒"
+                    value={selected.cycleSec == null ? "" : String(selected.cycleSec)}
+                    placeholder="未填写"
+                    onChange={(value) => onElement({ cycleSec: parseNum(value) })}
+                  />
+                  <p className="inspector-empty">留空不能推演。节拍只计取一托的时间，不含叉车在通道上的行驶。</p>
+                </>
+              ) : null}
               <div className="field">
                 <label>接入点</label>
                 <div className="input-row">

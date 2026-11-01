@@ -98,6 +98,8 @@ def evaluate(fixture: Dict[str, Any]) -> List[str]:
                 problems.append(f"人话不含 {needle!r}：{exc.message}")
             if fixture.get("fixtureId") == "G-TURN-02":
                 problems.extend(_straight_turn_still_runs(fixture))
+            if fixture.get("fixtureId") == "G-ASRS-02":
+                problems.extend(_asrs_zero_still_refuses(fixture))
             return problems
         problems.append(f"推演失败 {exc.code} {exc.message}")
         return problems
@@ -111,6 +113,7 @@ def evaluate(fixture: Dict[str, Any]) -> List[str]:
     _check_break(fixture, result, problems)
     _check_pick(fixture, result, problems)
     _check_motion(fixture, result, problems)
+    _check_asrs(fixture, result, problems)
     return problems
 
 
@@ -317,6 +320,113 @@ def _check_motion(fixture: Dict[str, Any], result: Dict[str, Any], problems: Lis
     status = next((row.get("status") for row in result["trajectory"]["tasks"] if row.get("taskId") == task_id), None)
     if status != "done":
         problems.append(f"{task_id} 状态 {status}")
+
+
+def _check_asrs(fixture: Dict[str, Any], result: Dict[str, Any], problems: List[str]) -> None:
+    if not str(fixture.get("fixtureId", "")).startswith("G-ASRS"):
+        return
+    expected = fixture["expected"]
+    cards = result["cards"]
+    _near(cards["wait"]["meanSec"], expected["waitMeanSec"], "等待均值", problems)
+    _near(cards["wait"]["p95Sec"], expected["waitP95Sec"], "等待 P95", problems)
+    _near(cards["throughput"]["value"], expected["throughput"], "吞吐", problems)
+    _near(cards["throughput"]["outboundPalletEq"], expected["palletEq"], "托当量", problems)
+    types = [row["resourceType"] for row in result["resources"]]
+    if "asrs" not in types:
+        problems.append(f"资源类型 {types}，期望含 asrs")
+    if "forklift" in types:
+        problems.append(f"资源类型 {types}，不应含 forklift")
+    busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "asrs")
+    _near(busy, expected["asrsBusySec"], "立库占用秒", problems)
+    segs = [seg for seg in result["trajectory"]["segments"] if seg.get("taskId") == (expected.get("taskId") or "T1")]
+    if any(seg.get("edgeId") for seg in segs):
+        problems.append("立库取货不该走通道边")
+    if len(segs) != 1 or segs[0].get("mode") != "asrs":
+        problems.append(f"立库段 {segs}")
+    elif abs(float(segs[0]["t1"]) - float(segs[0]["t0"]) - float(expected["asrsBusySec"])) > 1e-6:
+        problems.append(f"立库节拍 {float(segs[0]['t1']) - float(segs[0]['t0'])}")
+    status = next((row.get("status") for row in result["trajectory"]["tasks"] if row.get("taskId") == (expected.get("taskId") or "T1")), None)
+    if status != "done":
+        problems.append(f"T1 状态 {status}")
+    problems.extend(_asrs_second_waits(fixture))
+    problems.extend(_asrs_forklift_ignores_cycle(fixture))
+
+
+def _asrs_second_waits(fixture: Dict[str, Any]) -> List[str]:
+    """One location holds one pallet. The second load waits one cycle."""
+    from copy import deepcopy
+
+    clone = deepcopy(fixture)
+    clone["fixtureId"] = "G-ASRS-01-queue"
+    clone["scenario"]["initialInventory"] = {"ASRS1": 2}
+    clone["scenario"]["tasks"] = [
+        dict(clone["scenario"]["tasks"][0], taskId="T1"),
+        dict(clone["scenario"]["tasks"][0], taskId="T2"),
+    ]
+    try:
+        result = run_fixture(clone)
+    except DesError as exc:
+        return [f"第二托不应拒载 {exc.code} {exc.message}"]
+    problems: List[str] = []
+    _near(result["cards"]["wait"]["meanSec"], 15, "排队等待均值", problems)
+    _near(result["cards"]["wait"]["p95Sec"], 30, "排队等待 P95", problems)
+    _near(result["cards"]["throughput"]["value"], 12, "排队吞吐", problems)
+    busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "asrs")
+    _near(busy, 60, "排队立库占用秒", problems)
+    return problems
+
+
+def _asrs_forklift_ignores_cycle(fixture: Dict[str, Any]) -> List[str]:
+    """A filled cycle does not add time to a forklift trip that never enters the rack."""
+    from copy import deepcopy
+
+    clone = deepcopy(fixture)
+    clone["fixtureId"] = "G-ASRS-01-fork"
+    clone["scenario"]["resources"] = [
+        {
+            "resourceId": "FL1",
+            "kind": "forklift",
+            "homeNodeId": "N_home",
+            "travelSpeedMps": 1,
+            "emptySpeedMps": 1,
+        }
+    ]
+    clone["scenario"]["initialInventory"] = {"SLOT_A": 1}
+    task = dict(clone["scenario"]["tasks"][0])
+    task.pop("carrier", None)
+    task["originId"] = "SLOT_A"
+    clone["scenario"]["tasks"] = [task]
+    try:
+        result = run_fixture(clone)
+    except DesError as exc:
+        return [f"叉车不应因立库节拍拒载 {exc.code} {exc.message}"]
+    problems: List[str] = []
+    _near(result["cards"]["throughput"]["value"], 6, "叉车吞吐", problems)
+    _near(result["cards"]["wait"]["meanSec"], 0, "叉车等待", problems)
+    busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "forklift")
+    _near(busy, 20, "叉车占用秒", problems)
+    asrs_busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "asrs")
+    _near(asrs_busy, 0, "未使用的立库占用秒", problems)
+    if _path_nodes(result, "T1") != ["N_home", "N_slot", "N_ship"]:
+        problems.append(f"叉车路径 {_path_nodes(result, 'T1')}")
+    return problems
+
+
+def _asrs_zero_still_refuses(fixture: Dict[str, Any]) -> List[str]:
+    from copy import deepcopy
+
+    clone = deepcopy(fixture)
+    clone["fixtureId"] = "G-ASRS-02-zero"
+    for el in clone["layoutSnapshot"]["elements"]:
+        if el.get("typeElementId") == "ST-ASRS-01":
+            el["params"] = {"cycle_sec": 0}
+    try:
+        run_fixture(clone)
+    except DesError as exc:
+        if exc.code == "INPUT_UNCONFIRMED" and "立库节拍未填写" in exc.message:
+            return []
+        return [f"节拍 0 的拒载不对 {exc.code} {exc.message}"]
+    return ["节拍 0 不应放行"]
 
 
 def _straight_turn_still_runs(fixture: Dict[str, Any]) -> List[str]:

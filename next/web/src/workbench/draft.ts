@@ -48,6 +48,8 @@ export type PoseEl = {
   allowLoadTypes?: string[] | null;
   /** Buffer slots. Undefined uses 1 on CV-BUF-01; null means the user cleared it. */
   capacitySlots?: number | null;
+  /** ASRS retrieve seconds for one pallet. Null or omitted means the user has not filled it. */
+  cycleSec?: number | null;
 };
 
 export type Draft = {
@@ -577,6 +579,9 @@ function elementParams(el: PoseEl, elements: PoseEl[]): Record<string, unknown> 
   if (el.accessNodeId && el.accessX !== null && el.accessY !== null) {
     params.accessNodeId = el.accessNodeId;
     params.accessPoint = { x: el.accessX, y: el.accessY };
+  }
+  if (el.typeElementId === "ST-ASRS-01" && el.cycleSec != null && el.cycleSec > 0) {
+    params.cycle_sec = el.cycleSec;
   }
   if (el.typeElementId === "ST-PAL-01") {
     const bays = el.bays ?? 1;

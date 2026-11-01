@@ -3,10 +3,12 @@
 Straight, curve, divert and buffer conveyors travel at speed_mpm/60
 metres per second when their ports are linked. A merge holds one load.
 A buffer holds capacity_slots loads; a full segment makes the next load wait.
-Vertical, chute, loop, induct and ASRS still refuse before the
-scheduler, so they do not emit cards. An AGV uses the same aisle as a
-forklift when a task sets carrier to agv and the scenario has an AGV.
-A task that depends on an AGV with no vehicle refuses before the scheduler.
+Vertical, chute, loop and induct still refuse before the scheduler,
+so they do not emit cards. An AGV uses the same aisle as a forklift
+when a task sets carrier to agv and the scenario has an AGV. A task
+that depends on an AGV with no vehicle refuses before the scheduler.
+ST-ASRS-01 retrieves one pallet in cycle_sec and does not drive a
+forklift into the rack. A missing cycle refuses before the scheduler.
 
 full_pallet: arrival, resource wait, empty travel, pick, loaded travel, ship.
 break_bulk: deliver a pallet to a break_bulk station slot, process, convert
@@ -34,7 +36,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from .conveyor import ConveyorGraph, direct_is_pure_conveyor, raise_if_refused
+from .conveyor import ConveyorGraph, cycle_sec_of, direct_is_pure_conveyor, raise_if_refused, type_of
 from .errors import DesError
 from .graph import (
     build_adjacency,
@@ -157,6 +159,8 @@ class DesEngine:
         self.forklift_pool = ""
         self.picker_pool = ""
         self.agv_pool = ""
+        self.asrs_ids: set = set()
+        self.asrs_gates: Dict[str, _Gate] = {}
         self.piece_sec: Optional[float] = None
         self.edge_gates: Dict[str, _Gate] = {}
         self.station_gates: Dict[str, _Gate] = {}
@@ -252,6 +256,8 @@ class DesEngine:
             eid = el.get("elementId")
             if eid and eid != loc:
                 self.by_ref.setdefault(eid, el)
+            if type_of(el) == "ST-ASRS-01" and loc:
+                self.asrs_ids.add(loc)
             if el.get("kind") == "slot" and loc:
                 self.slots[loc] = el
             elif el.get("kind") == "dock" and loc:
@@ -361,7 +367,7 @@ class DesEngine:
             for task in self.direct.get("tasks") or []:
                 kind = str(task.get("flowKind") or "full_pallet")
                 carrier = str(task.get("carrier") or "")
-                if kind != "piece_pick" and carrier != "agv":
+                if kind != "piece_pick" and carrier not in {"agv", "asrs"}:
                     return True
             return False
         kinds = set(self._flow_kinds())
@@ -574,7 +580,7 @@ class DesEngine:
                         raise DesError("INPUT_UNCONFIRMED", "入库需要收货月台")
                     if self.putaway_sec is None:
                         raise DesError("INPUT_UNCONFIRMED", "上架时间未填写", {"field": "putaway"})
-                    slot = self.inventory.pick_slot_with_capacity(1.0)
+                    slot = self.inventory.pick_slot_with_capacity(1.0, skip=self.asrs_ids)
                     if not slot:
                         raise DesError("INPUT_UNCONFIRMED", "没有货位容量承接入库")
                     self._add(
@@ -683,6 +689,38 @@ class DesEngine:
                 continue
             origin = self._element(spec["originId"])
             dest = self._element(spec["destId"])
+            carrier = str(spec.get("carrier") or "")
+            if type_of(origin) == "ST-ASRS-01" and carrier != "asrs":
+                raise DesError(
+                    "INPUT_UNCONFIRMED",
+                    "立体库位不能交给叉车取货",
+                    {"elementId": spec["originId"]},
+                )
+            if carrier == "asrs":
+                if kind != "full_pallet":
+                    raise DesError("UNSUPPORTED_SCENARIO", "立库只取出整托", {"flowKind": kind})
+                if type_of(origin) != "ST-ASRS-01":
+                    raise DesError(
+                        "INPUT_UNCONFIRMED",
+                        "立库任务的起点不是立体库位",
+                        {"elementId": spec["originId"]},
+                    )
+                self._add(
+                    _Task(
+                        task_id=str(spec["taskId"]),
+                        direction="outbound_ship",
+                        qty=qty,
+                        arrival_t=ready,
+                        location_id=str(spec["originId"]),
+                        origin_node=origin["accessNodeId"],
+                        dest_node=dest["accessNodeId"],
+                        dest_id=str(spec["destId"]),
+                        dock_id=dest["elementId"] if dest.get("kind") == "dock" else None,
+                        flow_kind="full_pallet",
+                        carrier="asrs",
+                    )
+                )
+                continue
             if kind == "piece_pick":
                 qty_cases = float(spec.get("qtyCases") or 1)
                 if qty_cases <= 0 or abs(qty_cases - round(qty_cases)) > 1e-6:
@@ -797,7 +835,7 @@ class DesEngine:
                 self._fail(task, "ROUTE_UNREACHABLE", f"{task.task_id} 没有通路")
                 return
         elif task.direction in {"outbound_ship", "break_bulk"}:
-            slot = self.inventory.pick_slot_with_stock(task.qty, preferred=task.location_id)
+            slot = self.inventory.pick_slot_with_stock(task.qty, preferred=task.location_id, skip=self.asrs_ids)
             if not slot:
                 self._fail(task, "STOCKOUT", f"{task.task_id} 没有可取库存")
                 return
@@ -1182,6 +1220,9 @@ class DesEngine:
             task.conv_i = 0
             self._convey_request(task)
             return
+        if task.carrier == "asrs":
+            self._asrs_request(task)
+            return
         task.status = "queued"
         if task.direction == "piece_pick":
             pool = self.picker_pool
@@ -1274,7 +1315,9 @@ class DesEngine:
             return [
                 str(slot.get("accessNodeId"))
                 for slot in self.slots.values()
-                if slot.get("accessNodeId") and self.inventory.available(slot["elementId"]) + 1e-9 >= task.qty
+                if slot.get("accessNodeId")
+                and location_id(slot) not in self.asrs_ids
+                and self.inventory.available(slot["elementId"]) + 1e-9 >= task.qty
             ]
         if task.origin_node:
             return [task.origin_node]
@@ -1385,6 +1428,90 @@ class DesEngine:
     def _note_occupied(self, seg: Any, dt: float) -> None:
         row = self.occupied.setdefault(seg.instance_id, {"elementId": seg.type_id, "occupiedSec": 0.0})
         row["occupiedSec"] += dt
+
+    def _asrs_res(self, loc: str) -> _Res:
+        for res in self.resources:
+            if res.resource_id == loc and res.resource_type == "asrs":
+                return res
+        res = _Res(resource_id=loc, resource_type="asrs", pool_id=f"asrs-{loc}", node_id="")
+        self.resources.append(res)
+        return res
+
+    def _asrs_request(self, task: _Task) -> None:
+        loc = str(task.location_id)
+        gate = self.asrs_gates.setdefault(loc, _Gate(cap=1))
+        requested_at = self.t
+        if len(gate.holders) < gate.cap:
+            self._asrs_grant(task, requested_at)
+            return
+        gate.queue.append({"taskId": task.task_id, "requestedAt": requested_at})
+        task.status = "waiting_asrs"
+
+    def _asrs_grant(self, task: _Task, requested_at: float) -> None:
+        loc = str(task.location_id)
+        el = self.by_ref[loc]
+        cycle = cycle_sec_of(el)
+        if cycle is None:
+            raise DesError("INPUT_UNCONFIRMED", "立库节拍未填写", {"elementId": loc})
+        gate = self.asrs_gates[loc]
+        gate.holders.append(task.task_id)
+        wait = max(0.0, self.t - requested_at)
+        if wait > 1e-9:
+            task.wait_sec += wait
+            self.entity_wait[loc] = self.entity_wait.get(loc, 0.0) + wait
+        self.inventory.remove(loc, task.qty)
+        t1 = self.t + cycle
+        task.status = "retrieving"
+        pose = el.get("pose") or {}
+        point = {"x": float(pose.get("x") or 0), "y": float(pose.get("y") or 0)}
+        self._emit("asrs_start", {"taskId": task.task_id, "locationId": loc, "cycleSec": cycle})
+        self.segments.append(
+            {
+                "t0": self.t,
+                "t1": t1,
+                "from": loc,
+                "to": loc,
+                "fromPose": point,
+                "toPose": point,
+                "resourceId": loc,
+                "taskId": task.task_id,
+                "mode": "asrs",
+                "elementId": "ST-ASRS-01",
+                "instanceId": loc,
+            }
+        )
+        res = self._asrs_res(loc)
+        res.task_id = task.task_id
+        res.assign_t = self.t
+        self._schedule(t1, PHASE_COMPLETE, "asrs_done", {"taskId": task.task_id, "locationId": loc})
+
+    def _release_asrs(self, loc: str, task: _Task) -> None:
+        gate = self.asrs_gates.get(loc)
+        if gate is None:
+            return
+        if task.task_id in gate.holders:
+            gate.holders.remove(task.task_id)
+        if not gate.queue or len(gate.holders) >= gate.cap:
+            return
+        head = gate.queue.pop(0)
+        self._asrs_grant(self.tasks[head["taskId"]], float(head["requestedAt"]))
+
+    def _on_asrs_done(self, payload: Dict[str, Any]) -> None:
+        task = self.tasks[payload["taskId"]]
+        loc = str(payload["locationId"])
+        res = self._asrs_res(loc)
+        res.busy_sec += self.t - res.assign_t
+        res.task_id = None
+        self._release_asrs(loc, task)
+        dest = self.by_ref.get(task.dest_id) or {}
+        if self._ship_dest(dest):
+            self.inventory.ship(task.qty)
+            self._emit("ship", {"taskId": task.task_id, "dockId": task.dest_id, "palletEq": task.qty})
+        else:
+            self.inventory.deposit(str(task.dest_id), task.qty)
+            self._emit("asrs_deliver", {"taskId": task.task_id, "destId": task.dest_id, "palletEq": task.qty})
+        self.outbound_pallet_eq += task.qty
+        self._complete_task(task, None)
 
     def _convey_request(self, task: _Task) -> None:
         seg = task.chain[task.conv_i]
@@ -1613,6 +1740,8 @@ class DesEngine:
                 self._on_task_complete(ev.payload)
             elif ev.kind == "convey_exit":
                 self._on_convey_exit(ev.payload)
+            elif ev.kind == "asrs_done":
+                self._on_asrs_done(ev.payload)
             elif ev.kind == "convey_mark":
                 self._on_convey_mark(ev.payload)
             else:
