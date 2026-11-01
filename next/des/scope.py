@@ -1,8 +1,9 @@
 """Types this manual slice will place but will not pretend to simulate.
 
 Straight, curve, merge, divert and buffer conveyors have a runtime.
-Vertical, chute, loop, induct, plus ASRS / crane, still refuse.
+Vertical, chute, loop and induct still refuse. A crane, hoist and charger still refuse.
 MH-AGV-01 can travel the aisle when the scenario includes an AGV.
+ST-ASRS-01 retrieves one pallet in cycle_sec. It is not a forklift slot.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ _EXACT = {
     "MH-CRANE-01",
     "MH-HOIST-01",
     "MH-XFER-01",
-    "ST-ASRS-01",
     "PK-DEPAL-AUTO-01",
 }
 

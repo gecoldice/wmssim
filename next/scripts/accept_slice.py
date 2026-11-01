@@ -556,7 +556,7 @@ def main() -> int:
     print("AC-17 转向和单向: 金样 G-TURN-01/02 与 G-WAY-01/02。跨墙和窄通道仍由 S-03/S-04 覆盖。这不是 AC-17 全部验收。")
 
     print("\n=== G-EDGE / G-BREAK fixtures ===")
-    check(run_suite() == 0, "G-EDGE, G-BREAK, G-PICK, G-TURN, G-WAY, and G-AGV")
+    check(run_suite() == 0, "G-EDGE, G-BREAK, G-PICK, G-TURN, G-WAY, G-AGV, and G-ASRS")
 
     print("\n=== MX mixed-warehouse edge occupancy + break_bulk ===")
     print("spec_only stays spec_only; assert pass is not UA S-D1 and not a mini-gold substitute")

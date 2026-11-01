@@ -123,6 +123,7 @@ function draftFromSaved(facility: Record<string, unknown>, document: Record<stri
         direction: typeof params.direction === "string" ? params.direction : undefined,
         allowLoadTypes: Array.isArray(params.allow_load_types) ? params.allow_load_types.map(String) : undefined,
         capacitySlots: typeof params.capacity_slots === "number" ? params.capacity_slots : undefined,
+        cycleSec: typeof params.cycle_sec === "number" ? params.cycle_sec : undefined,
       },
     ];
   });
@@ -551,7 +552,9 @@ export function Workbench() {
         raw.includes("缓冲位数未填写") ||
         raw.includes("单向通道走不通") ||
         raw.includes("转不过这个弯") ||
-        raw.includes("至少需要 1 台 AGV");
+        raw.includes("至少需要 1 台 AGV") ||
+        raw.includes("立库节拍未填写") ||
+        raw.includes("立体库位不能交给叉车取货");
       setRun(null);
       setRejected(human ? raw : `${copy.simFail} ${raw}`);
       setMode("decision");

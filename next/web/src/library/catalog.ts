@@ -118,7 +118,6 @@ const UNSIMULATED_EXACT = new Set([
   "MH-CRANE-01",
   "MH-HOIST-01",
   "MH-XFER-01",
-  "ST-ASRS-01",
   "PK-DEPAL-AUTO-01",
 ]);
 

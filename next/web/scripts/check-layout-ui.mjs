@@ -33,7 +33,7 @@ for (const id of ["CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01"]) {
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
 }
-for (const id of ["CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01", "MH-CRANE-01", "ST-ASRS-01", "PK-DEPAL-AUTO-01"]) {
+for (const id of ["CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01", "MH-CRANE-01", "PK-DEPAL-AUTO-01"]) {
   if (!isUnsimulated(id)) throw new Error(`${id} should stay out of the DES`);
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
@@ -43,9 +43,11 @@ for (const id of ["CV-STR-01", "CV-ROL-01", "CV-BELT-01"]) {
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
 }
-if (isUnsimulated("ST-PAL-01") || isUnsimulated("IN-DOCK-01") || isUnsimulated("MH-AGV-01")) throw new Error("manual types marked unsimulated");
-const blocked = unsimulatedMessage(["CV-VERT-01", "MH-CRANE-01", "ST-ASRS-01"]);
-if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-VERT-01") || !blocked.includes("MH-CRANE-01") || blocked.includes("MH-AGV-01") || blocked.includes("CV-CURVE-01") || blocked.includes("CV-STR-01") || blocked.includes("即将")) {
+if (isUnsimulated("ST-PAL-01") || isUnsimulated("IN-DOCK-01") || isUnsimulated("MH-AGV-01") || isUnsimulated("ST-ASRS-01")) {
+  throw new Error("manual types marked unsimulated");
+}
+const blocked = unsimulatedMessage(["CV-VERT-01", "MH-CRANE-01", "PK-DEPAL-AUTO-01"]);
+if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-VERT-01") || !blocked.includes("MH-CRANE-01") || blocked.includes("MH-AGV-01") || blocked.includes("ST-ASRS-01") || blocked.includes("CV-CURVE-01") || blocked.includes("CV-STR-01") || blocked.includes("即将")) {
   throw new Error(blocked);
 }
 if (copy.conveyorIdleNote.includes("已接入")) throw new Error("curve note implies the runtime is connected");
@@ -509,6 +511,25 @@ const agvHtml = inspectorHtml(agvDrop, [...draft.elements, agvDrop]);
 if (!agvHtml.includes("AGV 数量") || !agvHtml.includes("只是摆在图上") || !straightHtml.includes("留空不带车")) {
   throw new Error("inspector hid the AGV count note");
 }
+const asrsDrop = elementFromDrop(draft.elements, "ST-ASRS-01", 6, 4, { id: "n-acc", x: 6, y: 12 });
+const asrsHtml = inspectorHtml(asrsDrop, [...draft.elements, asrsDrop]);
+if (!asrsHtml.includes("立库节拍") || !asrsHtml.includes("留空不能推演")) throw new Error("inspector hid the ASRS cycle");
+const asrsLayout = buildLayout(
+  { ...draft, elements: [...draft.elements, asrsDrop] },
+  "layout-asrs",
+  "pending",
+  { id: "facility-mixed", revision: "pending" },
+);
+const savedAsrs = asrsLayout.elements.find((el) => el.typeElementId === "ST-ASRS-01");
+if (savedAsrs?.params.cycle_sec !== undefined) throw new Error(`blank cycle was sent ${JSON.stringify(savedAsrs.params)}`);
+const timed = buildLayout(
+  { ...draft, elements: [...draft.elements, { ...asrsDrop, cycleSec: 30 }] },
+  "layout-asrs-timed",
+  "pending",
+  { id: "facility-mixed", revision: "pending" },
+);
+const timedAsrs = timed.elements.find((el) => el.typeElementId === "ST-ASRS-01");
+if (timedAsrs?.params.cycle_sec !== 30) throw new Error(`cycle ${timedAsrs && timedAsrs.params.cycle_sec}`);
 if (!straightHtml.includes("转向半径") || !straightHtml.includes("单向，只从起点开往终点")) {
   throw new Error("inspector hid turn radius or one-way");
 }

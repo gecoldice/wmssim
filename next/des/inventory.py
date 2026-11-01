@@ -98,10 +98,13 @@ class InventoryLedger:
         self.cases_in_transit -= qty
         self.cases_shipped += qty
 
-    def pick_slot_with_stock(self, qty: float, preferred: str | None = None) -> str | None:
-        if preferred and self.available(preferred) + 1e-9 >= qty:
+    def pick_slot_with_stock(self, qty: float, preferred: str | None = None, *, skip: set | None = None) -> str | None:
+        blocked = skip or set()
+        if preferred and preferred not in blocked and self.available(preferred) + 1e-9 >= qty:
             return preferred
         for loc in sorted(self.on_hand):
+            if loc in blocked:
+                continue
             if self.available(loc) + 1e-9 >= qty:
                 return loc
         return None
@@ -114,8 +117,11 @@ class InventoryLedger:
     def release_reserve(self, loc: str, qty: float) -> None:
         self.reserved[loc] = max(0.0, self.reserved.get(loc, 0.0) - qty)
 
-    def pick_slot_with_capacity(self, qty: float) -> str | None:
+    def pick_slot_with_capacity(self, qty: float, *, skip: set | None = None) -> str | None:
+        blocked = skip or set()
         for loc in sorted(self.capacity):
+            if loc in blocked:
+                continue
             free = self.capacity[loc] - self.on_hand[loc]
             if free + 1e-9 >= qty:
                 return loc
