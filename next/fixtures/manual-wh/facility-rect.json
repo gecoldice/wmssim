@@ -1,0 +1,49 @@
+{
+  "contractVersion": "0.3",
+  "id": "facility-rect",
+  "revision": "fixture",
+  "parentRef": null,
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m"
+  },
+  "boundary": {
+    "outer": [
+      {
+        "x": 0,
+        "y": 0
+      },
+      {
+        "x": 40,
+        "y": 0
+      },
+      {
+        "x": 40,
+        "y": 24
+      },
+      {
+        "x": 0,
+        "y": 24
+      },
+      {
+        "x": 0,
+        "y": 0
+      }
+    ]
+  },
+  "obstacles": [],
+  "openings": [],
+  "reservedAreas": [],
+  "heightProfile": {
+    "kind": "uniform",
+    "heightM": 10
+  },
+  "evidence": {
+    "sourceKind": "manual",
+    "sourceRef": "slice-manual-test",
+    "confirmationStatus": "confirmed",
+    "updatedAt": "2026-10-29T00:00:00+00:00"
+  }
+}

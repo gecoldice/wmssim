@@ -1,0 +1,59 @@
+{
+  "fixtureId": "MX-D1-EB",
+  "title": "综合仓样例数据面：默认量整托+拆托，边占用开，小件只生成",
+  "status": "spec_only",
+  "templateId": "template.mixed_wh_v0",
+  "layoutFile": "layout-mixed-wh-v0.json",
+  "facilityFile": "facility-mixed.json",
+  "layoutRevision": "mx-wh-rev-eb",
+  "note": "status 保持 spec_only。断言通过不改这个字段，也不等于 UA S-D1、综合仓三流 D1、或用 G-EDGE/G-BREAK 代替本夹具。",
+  "capacityOverride": {
+    "instanceId": "rack-001",
+    "palletsPerBay": 20,
+    "reason": "模板货位几何容量装不下 50+30 托。只把 rack-001 的 palletsPerBay 从 2 抬到 20，pose 不动。不表示物理货格已经按 80 托建模。"
+  },
+  "edgeOccupancy": {
+    "enabled": true
+  },
+  "scenario": {
+    "horizonSec": 28800,
+    "seed": 42,
+    "casesPerPallet": 24,
+    "forklifts": 3,
+    "windowSec": 60,
+    "windowNote": "到达窗 60 秒，是为了让 3 台叉车同时走上 maxConcurrent=2 的通道边。班次仍是 8 小时。不是把 8 小时均匀到达写成必有边等待。",
+    "speeds": {
+      "travelSpeedMps": 1.2,
+      "emptySpeedMps": 1.5,
+      "pick": 10,
+      "ship": 5,
+      "break_bulk": 60
+    },
+    "speedsNote": "速度、处理时间和 casesPerPallet 是本夹具输入，不是项目默认值。",
+    "flows": {
+      "full_pallet": 50,
+      "break_bulk": 30,
+      "piece_pick": 20
+    },
+    "piecePick": "generate_only"
+  },
+  "expected": {
+    "mustReject": false,
+    "conservationOk": true,
+    "casesMatchConvertedPallets": true,
+    "occupyEvents": true,
+    "cardsFinite": true,
+    "segmentsNonEmpty": true,
+    "pieceTasksNotDone": true,
+    "edgeWaitEntersBottleneck": true,
+    "kpiHonesty": "本夹具断言通过 ≠ UA S-D1 ≠ 三流 D1 ≠ 业务接量。不强制默认量下的目标托盘数。"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "d1AllFlows": false,
+    "sD1UaPass": false,
+    "miniGoldSubstitutesMx": false,
+    "runner": "next/scripts/run_mx.py"
+  }
+}

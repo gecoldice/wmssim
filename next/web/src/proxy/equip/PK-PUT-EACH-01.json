@@ -1,0 +1,74 @@
+{
+  "schema_version": "0.2",
+  "element_id": "PK-PUT-EACH-01",
+  "element_type": "Putwall",
+  "display_name": "小件播种格口面",
+  "glb": "/assets/p0/PK-PUT-EACH-01/lod1.glb",
+  "lod": {
+    "lod1": "/assets/p0/PK-PUT-EACH-01/lod1.glb"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 2.4,
+    "aabb": {
+      "length_m": 4.2,
+      "width_m": 1.0
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "put_face",
+      "role": "bidirectional",
+      "x_m": 0,
+      "y_m": 1.1,
+      "z_m": 0.5,
+      "normal_deg": 0,
+      "family": "tote"
+    },
+    {
+      "id": "person_stand",
+      "role": "bidirectional",
+      "x_m": 0,
+      "y_m": 0,
+      "z_m": 0.9,
+      "normal_deg": 0,
+      "family": "person"
+    }
+  ],
+  "connector_ids": [
+    "put_face",
+    "person_stand"
+  ],
+  "params": {
+    "geometry": {
+      "length_m": 4.2,
+      "width_m": 1.0,
+      "height_m": 2.2,
+      "bay_count": 6,
+      "bay_w_m": 0.7,
+      "bay_d_m": 1.0,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "puts_per_hour": 200
+    },
+    "rules": {
+      "order_slot_required": true
+    },
+    "interface": {
+      "put_face_port": "put_face"
+    }
+  },
+  "visual": {
+    "proxy": "none"
+  },
+  "meta": {
+    "element_library_id": "PK-PUT-EACH-01",
+    "flows": [
+      "small_sort"
+    ],
+    "notes": "LOD1 GLB 已交 · 格口阵列可读 · bay_count=6 · 无人形 · 1:1 米制 · 本机预览挂载 lod1",
+    "proxy": false
+  }
+}

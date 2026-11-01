@@ -1,0 +1,66 @@
+{
+  "contractVersion": "0.3",
+  "id": "demand-ops-break",
+  "revision": "d-ops-break-1",
+  "parentRef": null,
+  "goodsGroups": [
+    {
+      "id": "gg-std-pallet",
+      "loadUnit": "pallet",
+      "dimensionsM": { "length": 1.2, "width": 1.0, "height": 1.5 },
+      "grossWeightKg": 800,
+      "stackability": "stackable",
+      "allowedStorageTypes": ["ST-PAL-01"],
+      "quantityUnit": "pallet",
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-OPS-BREAK",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T13:00:00+08:00"
+      }
+    }
+  ],
+  "inventoryTargets": [
+    { "goodsGroupId": "gg-std-pallet", "quantity": 2, "unit": "pallet" }
+  ],
+  "initialInventory": [
+    {
+      "goodsGroupId": "gg-std-pallet",
+      "quantity": 2,
+      "unit": "pallet",
+      "locationInstanceId": "rack-001"
+    }
+  ],
+  "flows": [
+    {
+      "flowId": "flow-break-1",
+      "flowKind": "break_bulk",
+      "intent": "outbound",
+      "inputBasis": "explicit_quantity",
+      "quantity": 2,
+      "unit": "pallet",
+      "source": "storage",
+      "casesPerPallet": 4,
+      "downstream": {
+        "flowKind": "piece_pick",
+        "source": "derived",
+        "unit": "case",
+        "casesPerPallet": 4
+      },
+      "conversionRef": "conv-cases-4",
+      "parentFlowId": null
+    }
+  ],
+  "arrivalProfile": {
+    "kind": "uniform",
+    "windowSec": 600,
+    "unit": "pallet",
+    "paramsSource": "fx-ops-fixed"
+  },
+  "serviceTargets": [],
+  "assumptions": [
+    "两托拆成箱后再发运。外部吞吐只计发运，拆托是中间产出。",
+    "不另建拆托区，与整托共用货位和月台。"
+  ],
+  "totalDemand": { "quantity": 2, "unit": "pallet" }
+}

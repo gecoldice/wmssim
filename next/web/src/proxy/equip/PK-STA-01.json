@@ -1,0 +1,83 @@
+{
+  "schema_version": "0.2",
+  "element_id": "PK-STA-01",
+  "element_type": "PickStation",
+  "display_name": "拣选工位",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 2.2,
+    "aabb": {
+      "length_m": 2,
+      "width_m": 1.5
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "tote_in",
+      "role": "in",
+      "x_m": -0.75,
+      "y_m": 0.9,
+      "z_m": 0,
+      "normal_deg": 270,
+      "family": "tote"
+    },
+    {
+      "id": "tote_out",
+      "role": "out",
+      "x_m": 0.75,
+      "y_m": 0.9,
+      "z_m": 0,
+      "normal_deg": 90,
+      "family": "tote"
+    },
+    {
+      "id": "person_stand",
+      "role": "bidirectional",
+      "x_m": 0,
+      "y_m": 0,
+      "z_m": 1,
+      "normal_deg": 0,
+      "family": "person"
+    }
+  ],
+  "connector_ids": [
+    "tote_in",
+    "tote_out",
+    "person_stand"
+  ],
+  "params": {
+    "geometry": {
+      "length_m": 2,
+      "width_m": 1.5,
+      "height_m": 1.8,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "picks_per_hour": 120
+    },
+    "rules": {
+      "batch_size": 8,
+      "scan_required": true
+    },
+    "interface": {
+      "tote_ports": 2
+    }
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "PK-STA-01",
+    "flows": [
+      "small_sort",
+      "pallet_full"
+    ],
+    "notes": "proxy only · bench ~0.9 m · no GLB",
+    "proxy": true
+  }
+}

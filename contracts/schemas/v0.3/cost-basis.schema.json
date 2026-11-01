@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/cost-basis.json",
+  "title": "CostBasisRevision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "revision", "currency"],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "minLength": 1 },
+    "parentRef": { "type": ["object", "null"] },
+    "currency": { "type": "string", "minLength": 3 },
+    "horizonYears": { "type": ["number", "null"] },
+    "includeInstallFee": { "type": "boolean" },
+    "includeRelocateFee": { "type": "boolean" },
+    "purchaseIncludesInstall": {
+      "type": "boolean",
+      "description": "true 时不加安装行，避免与单价重复"
+    },
+    "feeSchedule": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "rate"],
+        "properties": {
+          "kind": { "type": "string", "enum": ["install", "relocate", "training"] },
+          "rate": { "type": "number" },
+          "unit": { "type": "string" }
+        }
+      }
+    },
+    "fxRate": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["from", "to", "rate", "asOf"],
+          "properties": {
+            "from": { "type": "string" },
+            "to": { "type": "string" },
+            "rate": { "type": "number" },
+            "asOf": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "notes": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "contractVersion": "0.3",
+  "id": "demand-ops-piece",
+  "revision": "d-ops-piece-1",
+  "parentRef": null,
+  "goodsGroups": [
+    {
+      "id": "gg-std-case",
+      "loadUnit": "case",
+      "dimensionsM": { "length": 0.4, "width": 0.3, "height": 0.3 },
+      "grossWeightKg": 12,
+      "stackability": "stackable",
+      "allowedStorageTypes": ["ST-PAL-01"],
+      "quantityUnit": "case",
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-OPS-PIECE",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T13:00:00+08:00"
+      }
+    }
+  ],
+  "inventoryTargets": [
+    { "goodsGroupId": "gg-std-case", "quantity": 8, "unit": "case" }
+  ],
+  "initialInventory": [
+    {
+      "goodsGroupId": "gg-std-case",
+      "quantity": 2,
+      "unit": "pallet",
+      "locationInstanceId": "rack-001"
+    }
+  ],
+  "flows": [
+    {
+      "flowId": "flow-piece-1",
+      "flowKind": "piece_pick",
+      "intent": "outbound",
+      "inputBasis": "explicit_quantity",
+      "quantity": 4,
+      "unit": "case",
+      "source": "external",
+      "casesPerPallet": 4,
+      "downstream": null,
+      "conversionRef": "conv-cases-4",
+      "parentFlowId": null
+    }
+  ],
+  "arrivalProfile": {
+    "kind": "uniform",
+    "windowSec": 600,
+    "unit": "case",
+    "paramsSource": "fx-ops-fixed"
+  },
+  "serviceTargets": [],
+  "assumptions": [
+    "独立小件需求是 external，不是拆托派生。4 箱 / 4 箱每托 = 1 托当量，只计一次发运。",
+    "不另建小件区。"
+  ],
+  "totalDemand": { "quantity": 4, "unit": "case" }
+}

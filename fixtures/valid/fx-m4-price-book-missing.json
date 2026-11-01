@@ -1,0 +1,50 @@
+{
+  "contractVersion": "0.3",
+  "id": "pb-fx-m4-missing",
+  "revision": "pb-miss-1",
+  "parentRef": null,
+  "currency": "CNY",
+  "demoOnly": true,
+  "items": [
+    {
+      "skuKey": "ST-PAL-01",
+      "unitPrice": null,
+      "unit": "ea",
+      "status": "missing",
+      "source": null,
+      "asOf": null,
+      "taxInclusive": null,
+      "specNote": "FX-10：货架缺价"
+    },
+    {
+      "skuKey": "IN-DOCK-01",
+      "unitPrice": 8000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-catalog",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": null
+    },
+    {
+      "skuKey": "OUT-DOCK-01",
+      "unitPrice": 8000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-catalog",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": null
+    },
+    {
+      "skuKey": "resource:forklift",
+      "unitPrice": 50000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-opex",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": null
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/comparison-set.json",
+  "title": "ComparisonSet",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["contractVersion", "id", "revision", "mode", "entries", "radar", "table"],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "revision": { "type": "string", "minLength": 1 },
+    "compareEngineVersion": { "type": "string" },
+    "mode": { "type": "string", "enum": ["layout_only", "whole_solution"] },
+    "commonBasis": { "type": "object" },
+    "scoreProfileRef": { "type": ["object", "null"] },
+    "scoreProfileLocked": { "type": "boolean" },
+    "entries": { "type": "array", "minItems": 2 },
+    "comparability": { "type": "object" },
+    "radar": {
+      "type": "object",
+      "required": ["radarEnabled", "commonAxes"],
+      "properties": {
+        "radarEnabled": { "type": "boolean" },
+        "commonAxes": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": ["string", "null"] },
+        "message": { "type": "string" },
+        "series": { "type": "array" },
+        "note": { "type": "string" }
+      }
+    },
+    "table": { "type": "object" },
+    "computedAt": { "type": "string" },
+    "kpiFromUiDemo": { "type": "boolean" }
+  }
+}

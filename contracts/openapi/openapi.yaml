@@ -1,0 +1,538 @@
+openapi: 3.1.0
+info:
+  title: simapp API
+  version: 0.3.6
+  description: |
+    仓库布局规划与运营推演应用 API。
+    外层 contractVersion=0.3；布局推演 Snapshot / equip 仍为 0.2。
+    本地持久化：默认 SQLite 文件 data/simapp.sqlite（SIMAPP_DB=off 时为进程内）。
+    GET /projects 与 GET /projects/{projectId}/workspace 供工作台重启后恢复。
+    M5：识图（/recognition-jobs）与高级优化（/advanced-evaluations）只返回失败或不支持，不产出几何或分数。
+    M4：BOM/成本（/cost-estimate-jobs）、比较（/comparisons）、报告（/reports）；
+    缺价不排最低成本；缺轴不补零；layout_only vs whole_solution。
+    M3：真实 DES（/simulation-jobs、/runs）；四卡由事件派生；回放绑历史 layoutRevision。
+    M2：场地确认、PlanningJob、基线规划（DEC-05）、候选采用/局部重排；
+    M1 手动路径仍独立；禁止 UI 演示公式进入 KPI。
+servers:
+  - url: http://127.0.0.1:8000/api/v1
+    description: local
+tags:
+  - name: health
+  - name: projects
+  - name: layouts
+  - name: planning
+  - name: simulation
+  - name: cost
+  - name: comparison
+  - name: reports
+  - name: extensions
+  - name: jobs
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness
+      operationId: getHealth
+      responses:
+        "200":
+          description: ok
+  /projects:
+    get:
+      tags: [projects]
+      summary: List persisted projects
+      operationId: listProjects
+      responses:
+        "200":
+          description: newest first
+    post:
+      tags: [projects]
+      summary: Create project
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "201":
+          description: created
+  /projects/{projectId}/workspace:
+    get:
+      tags: [projects]
+      summary: Workbench restore payload (layout, prepare summary, run cards, comparison)
+      operationId: getProjectWorkspace
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: workspace
+        "404":
+          description: missing project
+  /projects/{projectId}:
+    get:
+      tags: [projects]
+      summary: Get project summary
+      operationId: getProject
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: project
+  /projects/{projectId}/facility-revisions:
+    post:
+      tags: [projects]
+      summary: Save facility revision
+      operationId: putFacilityRevision
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [facility]
+              properties:
+                facility:
+                  type: object
+      responses:
+        "201":
+          description: saved
+  /projects/{projectId}/variants:
+    get:
+      tags: [projects]
+      summary: List variants
+      operationId: listVariants
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "200":
+          description: variants
+    post:
+      tags: [projects]
+      summary: Create manual/template variant
+      operationId: createVariant
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVariantRequest"
+      responses:
+        "201":
+          description: created
+  /layouts/{layoutId}/revisions:
+    post:
+      tags: [layouts]
+      summary: Save immutable layout revision (not validated)
+      operationId: saveLayoutRevision
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveLayoutRevisionRequest"
+      responses:
+        "201":
+          description: saved; prepareStatus=saved; simulationReady=false
+        "409":
+          description: revision conflict
+  /layouts/{layoutId}/prepare-jobs:
+    post:
+      tags: [layouts]
+      summary: Derive slots/aisles/accessNode + authoritative validate
+      operationId: prepareLayout
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrepareJobRequest"
+      responses:
+        "202":
+          description: prepare result (M1 sync completes in response)
+  /layouts/{layoutId}/prepare:
+    get:
+      tags: [layouts]
+      summary: Get last prepare result for layoutRevision
+      operationId: getPrepare
+      parameters:
+        - name: layoutId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: projectId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: revision
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: prepare payload including simulationReady
+  /projects/{projectId}/drawings:
+    post:
+      tags: [projects]
+      summary: Register drawing metadata (upload ≠ confirm)
+      operationId: putDrawing
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "201":
+          description: drawing registered; calibrated only with scale meta
+  /projects/{projectId}/planning-drafts:
+    post:
+      tags: [planning]
+      summary: Save planning wizard draft
+      operationId: savePlanningDraft
+      parameters:
+        - $ref: "#/components/parameters/projectId"
+      responses:
+        "201":
+          description: draft saved; disabledGoals listed when data missing
+  /demands:
+    post:
+      tags: [projects]
+      summary: Save demand revision
+      operationId: putDemand
+      responses:
+        "201":
+          description: demand saved
+  /planning-jobs:
+    post:
+      tags: [planning]
+      summary: Submit PlanningRequest (M2 sync baseline search)
+      operationId: createPlanningJob
+      responses:
+        "202":
+          description: job + candidate summaries; quick ≠ operational efficiency
+  /planning-jobs/{jobId}/candidates:
+    get:
+      tags: [planning]
+      summary: List planning candidates
+      operationId: listPlanningCandidates
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: candidate summaries
+  /candidates/{candidateId}:
+    get:
+      tags: [planning]
+      summary: Get full candidate including editable layoutDocument
+      operationId: getCandidate
+      parameters:
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: candidate detail
+  /candidates/{candidateId}/adoptions:
+    post:
+      tags: [planning]
+      summary: Adopt candidate as new variant branch
+      operationId: adoptCandidate
+      parameters:
+        - name: candidateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "201":
+          description: new variant + layout; does not overwrite working copy
+        "409":
+          description: REVISION_CONFLICT
+  /operating-profiles:
+    post:
+      tags: [projects]
+      summary: Save operating profile revision
+      operationId: putOperatingProfile
+      responses:
+        "201":
+          description: operating profile saved
+  /simulation-jobs:
+    post:
+      tags: [simulation]
+      summary: Run DES on prepare-ready historical layout snapshot
+      operationId: createSimulationJob
+      responses:
+        "202":
+          description: RunManifest summary + four cards + evidence refs
+        "409":
+          description: NOT_SIMULATION_READY or revision conflict
+        "422":
+          description: LAYOUT_REVISION_MISMATCH or DES domain error
+  /runs/{runId}:
+    get:
+      tags: [simulation]
+      summary: Get immutable run (KPI, events, trajectory bound to layoutRevision)
+      operationId: getRun
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: full run payload
+        "404":
+          description: not found
+  /jobs/{jobId}:
+    get:
+      tags: [jobs]
+      summary: Get async job status
+      operationId: getJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: job status
+  /jobs/{jobId}/cancel:
+    post:
+      tags: [jobs]
+      summary: Request job cancellation
+      operationId: cancelJob
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: latest job state
+  /price-books:
+    post:
+      tags: [cost]
+      summary: Save PriceBook revision
+      operationId: putPriceBook
+      responses:
+        "201":
+          description: saved
+  /cost-bases:
+    post:
+      tags: [cost]
+      summary: Save CostBasis revision
+      operationId: putCostBasis
+      responses:
+        "201":
+          description: saved
+  /score-profiles:
+    post:
+      tags: [comparison]
+      summary: Save ScoreProfile (anchors locked for absolute scores)
+      operationId: putScoreProfile
+      responses:
+        "201":
+          description: saved
+  /cost-estimate-jobs:
+    post:
+      tags: [cost]
+      summary: BOM × PriceBook → CostEstimate (incomplete blocks lowest-cost ranking)
+      operationId: createCostEstimateJob
+      responses:
+        "202":
+          description: estimate result (sync)
+  /cost-estimates/{estimateId}:
+    get:
+      tags: [cost]
+      summary: Get immutable CostEstimate
+      operationId: getCostEstimate
+      parameters:
+        - name: estimateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: CostEstimate
+  /cost-ranking:
+    post:
+      tags: [cost]
+      summary: Lowest-capex among complete estimates only
+      operationId: rankCosts
+      responses:
+        "200":
+          description: ranking
+  /comparisons:
+    post:
+      tags: [comparison]
+      summary: Build ComparisonSet (layout_only | whole_solution); no implicit batch runs
+      operationId: createComparison
+      responses:
+        "201":
+          description: comparison + recommendations
+  /comparisons/{comparisonId}:
+    get:
+      tags: [comparison]
+      summary: Get ComparisonSet
+      operationId: getComparison
+      parameters:
+        - name: comparisonId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: ComparisonSet
+  /reports:
+    post:
+      tags: [reports]
+      summary: Delivery HTML bound to historical layoutRevision / run
+      operationId: createReport
+      responses:
+        "201":
+          description: report
+  /reports/{reportId}:
+    get:
+      tags: [reports]
+      summary: Get delivery report
+      operationId: getReport
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: report
+  /recognition-jobs:
+    post:
+      tags: [extensions]
+      summary: DEV-15 recognition failure path; does not write facility geometry
+      operationId: createRecognitionJob
+      responses:
+        "200":
+          description: explicit failure, needs_confirmation, or unsupported
+  /advanced-evaluations:
+    post:
+      tags: [extensions]
+      summary: DEV-16 NSGA-II / lifecycle / scales explicit unsupported path
+      operationId: createAdvancedEvaluation
+      responses:
+        "200":
+          description: unsupported or failed; score and candidates empty
+components:
+  parameters:
+    projectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    CreateProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [name, unitSystem]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        unitSystem:
+          type: string
+          enum: [metric]
+    RevisionRef:
+      type: object
+      required: [id, revision]
+      properties:
+        id:
+          type: string
+        revision:
+          type: string
+    CreateVariantRequest:
+      type: object
+      required: [name, source, layoutRef]
+      properties:
+        name:
+          type: string
+        source:
+          type: string
+          enum: [manual, template, generated, edited]
+        layoutRef:
+          $ref: "#/components/schemas/RevisionRef"
+        operatingRef:
+          $ref: "#/components/schemas/RevisionRef"
+    SaveLayoutRevisionRequest:
+      type: object
+      required: [projectId, document]
+      properties:
+        baseRevision:
+          type: string
+          nullable: true
+        projectId:
+          type: string
+        document:
+          type: object
+    PrepareJobRequest:
+      type: object
+      required: [projectId, layoutRef, facilityRef]
+      properties:
+        projectId:
+          type: string
+        layoutRef:
+          $ref: "#/components/schemas/RevisionRef"
+        facilityRef:
+          $ref: "#/components/schemas/RevisionRef"
+        ruleSetRefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/RevisionRef"
+        catalogRef:
+          $ref: "#/components/schemas/RevisionRef"
+        sync:
+          type: boolean
+          default: true
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          nullable: true
+        retryable:
+          type: boolean
+        traceId:
+          type: string
+          nullable: true

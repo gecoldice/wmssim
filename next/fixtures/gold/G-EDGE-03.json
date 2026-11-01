@@ -1,0 +1,182 @@
+{
+  "fixtureId": "G-EDGE-03",
+  "title": "maxConcurrent=1，三车 FIFO 唤醒无插队",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "工程实测通过（next/scripts/run_gold.py）。仅本夹具断言通过，不代表全仓 KPI/AC 绿。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_edge_03",
+    "layoutRevision": "edge_rev_g03",
+    "coord": {
+      "origin": "SW",
+      "unit": "m"
+    },
+    "elements": [
+      {
+        "elementId": "N_home",
+        "kind": "node",
+        "pose": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "N_mid_a",
+        "kind": "node",
+        "pose": {
+          "x": 10,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "N_mid_b",
+        "kind": "node",
+        "pose": {
+          "x": 20,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "N_ship",
+        "kind": "node",
+        "pose": {
+          "x": 30,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": {
+          "x": 0,
+          "y": 2
+        },
+        "accessNodeId": "N_home",
+        "capacityPallets": 6,
+        "footprint": {
+          "w": 1.2,
+          "d": 1.0
+        }
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": {
+          "x": 30,
+          "y": 2
+        },
+        "accessNodeId": "N_ship",
+        "labels": [
+          "ship"
+        ],
+        "footprint": {
+          "w": 3,
+          "d": 2
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_a",
+        "from": "N_home",
+        "to": "N_mid_a",
+        "lengthM": 10,
+        "bidirectional": true,
+        "maxConcurrent": 3,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_bottleneck",
+        "from": "N_mid_a",
+        "to": "N_mid_b",
+        "lengthM": 10,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_b_ship",
+        "from": "N_mid_b",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": true,
+        "maxConcurrent": 3,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "edge_rev_g03",
+    "horizonSec": 900,
+    "seed": 103,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_home",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.2
+      },
+      {
+        "resourceId": "FL2",
+        "kind": "forklift",
+        "homeNodeId": "N_home",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.2
+      },
+      {
+        "resourceId": "FL3",
+        "kind": "forklift",
+        "homeNodeId": "N_home",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.2
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      },
+      {
+        "taskId": "T2",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      },
+      {
+        "taskId": "T3",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": {
+      "SLOT_A": 3
+    }
+  },
+  "expected": {
+    "mustReject": false,
+    "conservationOk": true,
+    "fifoWakeOrder": {
+      "edgeId": "E_bottleneck",
+      "assert": "occupy_grant 顺序与 occupy_request 入队顺序一致，无插队"
+    },
+    "thirdWaitsUntilSecondRelease": true,
+    "kpiHonesty": "本夹具通过不代表全仓 KPI/AC 绿"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

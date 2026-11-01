@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "0.2",
+  "layoutId": "layout-ok",
+  "layoutRevision": "fixture-snapshot",
+  "exportedAt": "2026-10-29T00:00:00+00:00",
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m",
+    "yawZero": "+X"
+  },
+  "elements": [
+    {
+      "elementId": "n-aisle-main-a",
+      "kind": "node",
+      "pose": {
+        "x": 2.0,
+        "y": 12.0
+      },
+      "footprint": {
+        "w": 0.1,
+        "d": 0.1
+      }
+    },
+    {
+      "elementId": "n-2",
+      "kind": "node",
+      "pose": {
+        "x": 12.0,
+        "y": 12.0
+      },
+      "footprint": {
+        "w": 0.1,
+        "d": 0.1
+      }
+    },
+    {
+      "elementId": "n-aisle-main-b",
+      "kind": "node",
+      "pose": {
+        "x": 38.0,
+        "y": 12.0
+      },
+      "footprint": {
+        "w": 0.1,
+        "d": 0.1
+      }
+    },
+    {
+      "elementId": "rack-001",
+      "typeElementId": "ST-PAL-01",
+      "kind": "slot",
+      "pose": {
+        "x": 12.0,
+        "y": 14.0,
+        "yawDeg": 0.0
+      },
+      "footprint": {
+        "w": 2.7,
+        "d": 1.2
+      },
+      "accessNodeId": "n-2",
+      "capacityPallets": 8,
+      "zone": "storage",
+      "labels": [
+        "bulk"
+      ]
+    },
+    {
+      "elementId": "dock-recv",
+      "typeElementId": "IN-DOCK-01",
+      "kind": "dock",
+      "pose": {
+        "x": 2.0,
+        "y": 12.0,
+        "yawDeg": 0.0
+      },
+      "footprint": {
+        "w": 3.0,
+        "d": 4.0
+      },
+      "accessNodeId": "n-aisle-main-a",
+      "labels": [
+        "recv"
+      ]
+    },
+    {
+      "elementId": "dock-ship",
+      "typeElementId": "OUT-DOCK-01",
+      "kind": "dock",
+      "pose": {
+        "x": 38.0,
+        "y": 12.0,
+        "yawDeg": 180.0
+      },
+      "footprint": {
+        "w": 3.0,
+        "d": 4.0
+      },
+      "accessNodeId": "n-aisle-main-b",
+      "labels": [
+        "ship"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "edgeId": "e-n-aisle-main-a-n-2",
+      "from": "n-aisle-main-a",
+      "to": "n-2",
+      "lengthM": 10.0,
+      "bidirectional": true,
+      "maxConcurrent": 2,
+      "speedFactor": 1
+    },
+    {
+      "edgeId": "e-n-2-n-aisle-main-b",
+      "from": "n-2",
+      "to": "n-aisle-main-b",
+      "lengthM": 26.0,
+      "bidirectional": true,
+      "maxConcurrent": 2,
+      "speedFactor": 1
+    }
+  ],
+  "defaults": {},
+  "validation": {
+    "derivationVersion": "slice-derive-0.1"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/project.json",
+  "title": "Project v0.3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "name", "unitSystem", "createdAt"],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "unitSystem": { "type": "string", "enum": ["metric"] },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}

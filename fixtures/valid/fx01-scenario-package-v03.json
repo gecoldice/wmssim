@@ -1,0 +1,12 @@
+{
+  "contractVersion": "0.3",
+  "scenarioId": "scenario-fx01",
+  "demandRef": { "id": "demand-fx01", "revision": "d-r1" },
+  "operatingRef": { "id": "op-fx01", "revision": "o-r1" },
+  "runControl": {
+    "horizonSec": 28800,
+    "seedStreams": { "demand": 42, "dispatch": 42 },
+    "demandSampleRef": null,
+    "metricDefinitionVersion": "metrics-pending-m3"
+  }
+}

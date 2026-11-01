@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/v0.3/cost-estimate.json",
+  "title": "CostEstimate",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "contractVersion",
+    "id",
+    "status",
+    "items",
+    "missingItems",
+    "totals",
+    "eligibleForLowestCostRanking"
+  ],
+  "properties": {
+    "contractVersion": { "const": "0.3" },
+    "id": { "type": "string", "minLength": 1 },
+    "costEngineVersion": { "type": "string" },
+    "variantRef": { "type": ["object", "null"] },
+    "layoutRef": { "type": ["object", "null"] },
+    "costBasisRef": { "type": ["object", "null"] },
+    "priceBookRef": { "type": ["object", "null"] },
+    "operatingRef": { "type": ["object", "null"] },
+    "bom": { "type": "array" },
+    "items": { "type": "array" },
+    "missingItems": { "type": "array" },
+    "status": { "type": "string", "enum": ["complete", "incomplete"] },
+    "totals": {
+      "type": "object",
+      "required": ["currency", "knownSubtotal", "complete"],
+      "properties": {
+        "currency": { "type": "string" },
+        "knownSubtotal": { "type": "number" },
+        "capexKnownSubtotal": { "type": "number" },
+        "opexKnownSubtotal": { "type": "number" },
+        "complete": { "type": "boolean" },
+        "capex": { "type": ["number", "null"] },
+        "total": { "type": ["number", "null"] },
+        "horizonCostPartial": { "type": ["number", "null"] },
+        "note": { "type": "string" }
+      }
+    },
+    "eligibleForLowestCostRanking": { "type": "boolean" },
+    "computedAt": { "type": "string" },
+    "kpiFromUiDemo": { "type": "boolean" }
+  }
+}

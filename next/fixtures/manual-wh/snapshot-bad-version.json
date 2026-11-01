@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "0.3",
+  "layoutId": "layout-bad",
+  "layoutRevision": "rev-x",
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m",
+    "yawZero": "+X"
+  },
+  "elements": [],
+  "edges": []
+}
