@@ -9,6 +9,9 @@ break_bulk: deliver a pallet to a break_bulk station slot, process, convert
 1 pallet into casesPerPallet cases. Edge and station slots use the same
 occupy_request / grant / release rule. Waiting lengthens the later segment;
 the node sequence stays the shortest path.
+piece_pick: a picker walks to the case location, spends processSec.piece_pick,
+then walks to the pack station or ship dock. Cases do not add palletEq.
+downstream "run" walks those cases; true / generate_only only records them.
 
 Speeds and process seconds are required inputs on the flow API. A direct
 gold scenario may omit pick/ship; those durations stay 0 instead of being invented.
@@ -78,6 +81,7 @@ class _Task:
     chain: List[Any] = field(default_factory=list)
     convey_done: bool = False
     handoff_ready: float = 0.0
+    reserved: bool = False
 
 
 @dataclass
@@ -135,6 +139,8 @@ class DesEngine:
         self.ship_event_ids: List[str] = []
         self.event_counter = 0
         self.forklift_pool = ""
+        self.picker_pool = ""
+        self.piece_sec: Optional[float] = None
         self.edge_gates: Dict[str, _Gate] = {}
         self.station_gates: Dict[str, _Gate] = {}
         self.edge_waits: List[Dict[str, Any]] = []
@@ -189,6 +195,10 @@ class DesEngine:
         if break_raw in (None, "") and isinstance(defaults, dict):
             break_raw = defaults.get("break_bulk")
         self.break_sec = float(break_raw) if break_raw not in (None, "") else None
+        piece_raw = proc.get("piece_pick")
+        if piece_raw in (None, "") and isinstance(defaults, dict):
+            piece_raw = defaults.get("piece_pick")
+        self.piece_sec = float(piece_raw) if piece_raw not in (None, "") else None
         cases = None
         if self.direct is not None and self.direct.get("casesPerPallet") not in (None, ""):
             cases = self.direct.get("casesPerPallet")
@@ -197,8 +207,6 @@ class DesEngine:
         elif svc.get("casesPerPallet") not in (None, ""):
             cases = svc.get("casesPerPallet")
         self.cases_per_pallet = float(cases) if cases not in (None, "") else None
-        if self.direct is not None and self.direct.get("downstream"):
-            self.downstream_piece = True
         self.nodes = {}
         self.slots = {}
         self.docks = {}
@@ -251,15 +259,83 @@ class DesEngine:
             return [str(task.get("flowKind") or "") for task in self.direct.get("tasks") or []]
         return [str(flow.get("flowKind") or "") for flow in self.demand.get("flows") or []]
 
-    def _check_flows(self) -> None:
-        kinds = self._flow_kinds()
-        for flow in self.demand.get("flows") or []:
-            if flow.get("downstream"):
+    def _mark_piece_mode(self) -> None:
+        """generate_only records case tasks. run walks them with a picker."""
+        self.piece_run = False
+        self.downstream_piece = False
+        if self.direct is not None:
+            flag = self.direct.get("downstream")
+            kinds = [str(task.get("flowKind") or "") for task in self.direct.get("tasks") or []]
+            if flag == "run":
                 self.downstream_piece = True
-        if "piece_pick" in kinds and "break_bulk" in kinds:
+                self.piece_run = True
+            elif flag:
+                self.downstream_piece = True
+            if "piece_pick" in kinds:
+                self.piece_run = True
+            return
+        piece_mode = ""
+        saw_break = any(str(flow.get("flowKind") or "") == "break_bulk" for flow in self.demand.get("flows") or [])
+        for flow in self.demand.get("flows") or []:
+            kind = str(flow.get("flowKind") or "")
+            downstream = flow.get("downstream")
+            if downstream and kind != "piece_pick":
+                self.downstream_piece = True
+            if kind != "piece_pick":
+                continue
+            mode = downstream.get("mode") if isinstance(downstream, dict) else ""
+            if mode == "generate_only" or (saw_break and mode != "run"):
+                piece_mode = "generate_only"
+            else:
+                piece_mode = "run"
+        if piece_mode == "generate_only":
             self.downstream_piece = True
+        elif piece_mode == "run":
+            self.piece_run = True
+            if saw_break:
+                self.downstream_piece = True
+
+    def _labeled(self, label: str) -> List[Dict[str, Any]]:
+        return [station for station in self.stations.values() if label in (station.get("labels") or [])]
+
+    def _piece_origin(self) -> Dict[str, Any]:
+        stocked = [station for station in self._labeled("piece_pick") if self.inventory.available_cases(station["elementId"]) > 1e-9]
+        faces = stocked or self._labeled("piece_pick")
+        if not faces:
+            raise DesError("FLOWKIND_STATION_MISSING", "布局没有小件拣选工位", {"flowKind": "piece_pick"})
+        face = faces[0]
+        if not face.get("accessNodeId"):
+            raise DesError("NO_ACCESS_NODE", f"{face.get('elementId')} 缺有效 accessNodeId", {"elementId": face.get("elementId")})
+        return face
+
+    def _piece_dest(self) -> Dict[str, Any]:
+        packs = self._labeled("pack")
+        dest = packs[0] if packs else self.ship_dock
+        if not dest:
+            raise DesError("INPUT_UNCONFIRMED", "小件需要包装台或发货月台", {"flowKind": "piece_pick"})
+        if not dest.get("accessNodeId"):
+            raise DesError("NO_ACCESS_NODE", f"{dest.get('elementId')} 缺有效 accessNodeId", {"elementId": dest.get("elementId")})
+        return dest
+
+    def _needs_forklift(self) -> bool:
+        if self.direct is not None:
+            if direct_is_pure_conveyor(self.direct):
+                return False
+            for task in self.direct.get("tasks") or []:
+                kind = str(task.get("flowKind") or "full_pallet")
+                if kind != "piece_pick":
+                    return True
+            return False
+        kinds = set(self._flow_kinds())
+        if not kinds:
+            return True
+        return bool(kinds & {"", "full_pallet", "break_bulk"})
+
+    def _check_flows(self) -> None:
+        self._mark_piece_mode()
+        kinds = self._flow_kinds()
         for kind in kinds:
-            if kind in {"full_pallet", ""}:
+            if kind in {"full_pallet", "", "piece_pick"}:
                 continue
             if kind == "break_bulk":
                 if not self.break_stations:
@@ -269,14 +345,6 @@ class DesEngine:
                         {"flowKind": kind},
                     )
                 continue
-            if kind == "piece_pick":
-                if "break_bulk" in kinds:
-                    continue
-                raise DesError(
-                    "UNSUPPORTED_SCENARIO",
-                    "piece_pick 不单独跑人路径；只在 break_bulk downstream 时生成箱任务骨架",
-                    {"flowKind": kind},
-                )
             raise DesError(
                 "UNSUPPORTED_SCENARIO",
                 f"本切片不支持 flowKind={kind}",
@@ -294,12 +362,27 @@ class DesEngine:
                         f"{station.get('elementId')} 缺有效 accessNodeId",
                         {"elementId": station.get("elementId")},
                     )
+        if self.piece_run:
+            if self.piece_sec is None or self.piece_sec <= 0:
+                raise DesError("INPUT_UNCONFIRMED", "拣选时间未填写", {"field": "processSec.piece_pick"})
+            if not any(res.resource_type == "picker" for res in self.resources):
+                raise DesError("NO_RESOURCES", "小件分拣至少需要 1 名拣货人", {"resourceType": "picker"})
+            if self.direct is None and not self.downstream_piece:
+                self._piece_origin()
+                self._piece_dest()
+
+    def _pool_for(self, kind: str) -> str:
+        if kind == "picker":
+            self.picker_pool = self.picker_pool or "pool-picker"
+            self.queues.setdefault(self.picker_pool, [])
+            return self.picker_pool
+        self.forklift_pool = self.forklift_pool or "pool-forklift"
+        self.queues.setdefault(self.forklift_pool, [])
+        return self.forklift_pool
 
     def _build_resources(self) -> None:
+        self._mark_piece_mode()
         if self.direct is not None:
-            pool_id = "pool-forklift"
-            self.queues[pool_id] = []
-            self.forklift_pool = pool_id
             for spec in self.direct.get("resources") or []:
                 home = spec.get("homeNodeId")
                 if home not in self.nodes:
@@ -311,16 +394,15 @@ class DesEngine:
                     _Res(
                         resource_id=str(spec.get("resourceId")),
                         resource_type=kind,
-                        pool_id=pool_id,
+                        pool_id=self._pool_for(kind),
                         node_id=home,
                         travel_mps=float(spec["travelSpeedMps"]) if spec.get("travelSpeedMps") else None,
                         empty_mps=float(spec["emptySpeedMps"]) if spec.get("emptySpeedMps") else None,
                     )
                 )
-            if not any(r.resource_type == "forklift" for r in self.resources):
-                if direct_is_pure_conveyor(self.direct):
-                    return
-                raise DesError("NO_RESOURCES", "至少需要 1 台叉车", {"resourceType": "forklift"})
+            if self._needs_forklift() and not any(r.resource_type == "forklift" for r in self.resources):
+                if not direct_is_pure_conveyor(self.direct):
+                    raise DesError("NO_RESOURCES", "至少需要 1 台叉车", {"resourceType": "forklift"})
             return
         home = None
         if self.recv and self.recv.get("accessNodeId"):
@@ -342,6 +424,8 @@ class DesEngine:
             self.queues[pool_id] = []
             if rtype == "forklift":
                 self.forklift_pool = pool_id
+            if rtype == "picker":
+                self.picker_pool = pool_id
             for i in range(count):
                 self.resources.append(
                     _Res(
@@ -351,7 +435,7 @@ class DesEngine:
                         node_id=home,
                     )
                 )
-        if not any(r.resource_type == "forklift" for r in self.resources):
+        if self._needs_forklift() and not any(r.resource_type == "forklift" for r in self.resources):
             raise DesError("NO_RESOURCES", "至少需要 1 台叉车才能推演整托", {"resourceType": "forklift"})
 
     def _next_seq(self) -> int:
@@ -400,11 +484,14 @@ class DesEngine:
     def _generate(self) -> None:
         if self.direct is not None:
             self._generate_direct()
+            self._require_case_stock()
             return
         task_n = 0
         for flow in self.demand.get("flows") or []:
             kind = flow.get("flowKind")
             if kind == "piece_pick":
+                if self.piece_run and not self.downstream_piece:
+                    task_n = self._generate_piece_flow(flow, task_n)
                 continue
             if kind == "break_bulk":
                 task_n = self._generate_break_flow(flow, task_n)
@@ -454,6 +541,7 @@ class DesEngine:
                             dock_id=self.recv["elementId"],
                         )
                     )
+        self._require_case_stock()
 
     def _generate_break_flow(self, flow: Dict[str, Any], task_n: int) -> int:
         qty = float(flow.get("quantity") or 0)
@@ -477,6 +565,41 @@ class DesEngine:
                 )
             )
         return task_n
+
+    def _generate_piece_flow(self, flow: Dict[str, Any], task_n: int) -> int:
+        qty = float(flow.get("quantity") or 0)
+        if qty <= 0:
+            return task_n
+        if abs(qty - round(qty)) > 1e-6:
+            raise DesError("INPUT_UNCONFIRMED", "拣选箱数必须是整数", {"quantity": qty})
+        face = self._piece_origin()
+        dest = self._piece_dest()
+        times = self._arrival_times(int(round(qty)))
+        for t_arr in times:
+            task_n += 1
+            self._add(
+                _Task(
+                    task_id=f"T-piece-{task_n:04d}",
+                    direction="piece_pick",
+                    qty=1.0,
+                    arrival_t=t_arr,
+                    location_id=face["elementId"],
+                    origin_node=face["accessNodeId"],
+                    dest_node=dest["accessNodeId"],
+                    flow_kind="piece_pick",
+                )
+            )
+        return task_n
+
+    def _require_case_stock(self) -> None:
+        need: Dict[str, float] = {}
+        for task in self.tasks.values():
+            if task.direction != "piece_pick" or not task.location_id:
+                continue
+            need[task.location_id] = need.get(task.location_id, 0.0) + task.qty
+        for loc, qty in need.items():
+            if self.inventory.available_cases(loc) + 1e-9 < qty:
+                raise DesError("INPUT_UNCONFIRMED", f"{loc} 拣选面箱库存不足", {"locationInstanceId": loc, "quantity": qty})
 
     def _generate_direct(self) -> None:
         for spec in self.direct.get("tasks") or []:
@@ -512,6 +635,23 @@ class DesEngine:
                 continue
             origin = self._element(spec["originId"])
             dest = self._element(spec["destId"])
+            if kind == "piece_pick":
+                qty_cases = float(spec.get("qtyCases") or 1)
+                if qty_cases <= 0 or abs(qty_cases - round(qty_cases)) > 1e-6:
+                    raise DesError("INPUT_UNCONFIRMED", "拣选箱数必须是整数", {"quantity": qty_cases})
+                self._add(
+                    _Task(
+                        task_id=str(spec["taskId"]),
+                        direction="piece_pick",
+                        qty=qty_cases,
+                        arrival_t=ready,
+                        location_id=str(spec["originId"]),
+                        origin_node=origin["accessNodeId"],
+                        dest_node=dest["accessNodeId"],
+                        flow_kind="piece_pick",
+                    )
+                )
+                continue
             if kind == "break_bulk":
                 if "break_bulk" not in (dest.get("labels") or []):
                     raise DesError(
@@ -578,6 +718,9 @@ class DesEngine:
                 self._assign(res, task)
 
     def _fail(self, task: _Task, code: str, message: str) -> None:
+        if task.direction == "piece_pick" and task.reserved and not task.picked and task.location_id:
+            self.inventory.release_cases(task.location_id, task.qty)
+            task.reserved = False
         task.status = "failed"
         self.warnings.append({"code": code, "message": message})
         self._emit("task_complete", {"taskId": task.task_id, "status": "failed", "waitSec": task.wait_sec})
@@ -587,7 +730,21 @@ class DesEngine:
         task.wait_sec = waited
         if waited > 1e-9:
             self.entity_wait[res.pool_id] = self.entity_wait.get(res.pool_id, 0.0) + waited
-        if task.direction in {"outbound_ship", "break_bulk"}:
+        if task.direction == "piece_pick":
+            loc = task.location_id or ""
+            if self.inventory.available_cases(loc) + 1e-9 < task.qty:
+                self._fail(task, "STOCKOUT", f"{task.task_id} 没有可拣的箱")
+                return
+            self.inventory.reserve_cases(loc, task.qty)
+            task.reserved = True
+            path_a = shortest_path(self.adj, res.node_id, task.origin_node)
+            path_b = shortest_path(self.adj, task.origin_node, task.dest_node)
+            if path_a is None or path_b is None:
+                self.inventory.release_cases(loc, task.qty)
+                task.reserved = False
+                self._fail(task, "ROUTE_UNREACHABLE", f"{task.task_id} 没有通路")
+                return
+        elif task.direction in {"outbound_ship", "break_bulk"}:
             slot = self.inventory.pick_slot_with_stock(task.qty, preferred=task.location_id)
             if not slot:
                 self._fail(task, "STOCKOUT", f"{task.task_id} 没有可取库存")
@@ -646,7 +803,7 @@ class DesEngine:
             self._request_edge(task, res, task.path_edges[task.edge_i])
             return
         if (
-            task.direction in {"outbound_ship", "break_bulk"}
+            task.direction in {"outbound_ship", "break_bulk", "piece_pick"}
             and not task.picked
             and task.edge_i == task.pickup_after
         ):
@@ -664,6 +821,17 @@ class DesEngine:
 
     def _begin_pick(self, task: _Task, res: _Res) -> None:
         assert task.location_id
+        if task.direction == "piece_pick":
+            self.inventory.remove_cases(task.location_id, task.qty)
+            task.picked = True
+            self._emit("pick", {"taskId": task.task_id, "locationId": task.location_id, "qty": task.qty, "unit": "case"})
+            self._schedule(
+                self.t + float(self.piece_sec or 0),
+                PHASE_COMPLETE,
+                "process_done",
+                {"taskId": task.task_id, "resourceId": res.resource_id, "process": "piece_pick"},
+            )
+            return
         self.inventory.remove(task.location_id, task.qty)
         task.picked = True
         self._emit("pick", {"taskId": task.task_id, "locationId": task.location_id, "qty": task.qty})
@@ -693,6 +861,15 @@ class DesEngine:
             return
         if task.direction == "break_bulk":
             self._request_station(task, res)
+            return
+        if task.direction == "piece_pick":
+            self._emit("case_ship_start", {"taskId": task.task_id, "qtyCases": task.qty, "locationId": task.location_id})
+            self._schedule(
+                self.t + self.ship_sec,
+                PHASE_COMPLETE,
+                "task_complete",
+                {"taskId": task.task_id, "outbound": False, "cases": task.qty},
+            )
             return
         self._emit("ship_start", {"taskId": task.task_id, "dockId": task.dock_id, "qty": task.qty})
         self._schedule(
@@ -884,21 +1061,59 @@ class DesEngine:
         self._release(res)
 
     def _spawn_piece(self, parent: _Task, cases: float) -> None:
-        child_id = f"{parent.task_id}-piece"
-        body = {
-            "taskId": child_id,
-            "flowKind": "piece_pick",
-            "status": "generated",
-            "qtyCases": cases,
-            "parentTaskId": parent.task_id,
-            "originId": parent.station_id,
-            "direction": "piece_pick",
-        }
-        self.piece_tasks.append(body)
-        self._emit(
-            "piece_pick_generated",
-            {"taskId": child_id, "parentTaskId": parent.task_id, "qtyCases": cases, "flowKind": "piece_pick"},
-        )
+        if not self.piece_run:
+            child_id = f"{parent.task_id}-piece"
+            body = {
+                "taskId": child_id,
+                "flowKind": "piece_pick",
+                "status": "generated",
+                "qtyCases": cases,
+                "parentTaskId": parent.task_id,
+                "originId": parent.station_id,
+                "direction": "piece_pick",
+            }
+            self.piece_tasks.append(body)
+            self._emit(
+                "piece_pick_generated",
+                {"taskId": child_id, "parentTaskId": parent.task_id, "qtyCases": cases, "flowKind": "piece_pick"},
+            )
+            return
+        count = int(round(cases))
+        if count <= 0 or abs(cases - count) > 1e-6:
+            raise DesError("INPUT_UNCONFIRMED", "拆出的箱数必须是正整数", {"quantity": cases})
+        origin = self.stations.get(parent.station_id or "")
+        if not origin or not origin.get("accessNodeId"):
+            raise DesError("NO_ACCESS_NODE", f"{parent.station_id} 缺有效 accessNodeId", {"elementId": parent.station_id})
+        dest = self._piece_dest()
+        for index in range(count):
+            child_id = f"{parent.task_id}-piece-{index + 1:02d}"
+            self._add(
+                _Task(
+                    task_id=child_id,
+                    direction="piece_pick",
+                    qty=1.0,
+                    arrival_t=self.t,
+                    location_id=parent.station_id,
+                    origin_node=origin["accessNodeId"],
+                    dest_node=dest["accessNodeId"],
+                    flow_kind="piece_pick",
+                )
+            )
+            self.piece_tasks.append(
+                {
+                    "taskId": child_id,
+                    "flowKind": "piece_pick",
+                    "status": "queued",
+                    "qtyCases": 1.0,
+                    "parentTaskId": parent.task_id,
+                    "originId": parent.station_id,
+                    "direction": "piece_pick",
+                }
+            )
+            self._emit(
+                "piece_pick_generated",
+                {"taskId": child_id, "parentTaskId": parent.task_id, "qtyCases": 1.0, "flowKind": "piece_pick"},
+            )
 
     def _release(self, res: _Res) -> None:
         res.busy_sec += self.t - res.assign_t
@@ -916,8 +1131,12 @@ class DesEngine:
             self._convey_enter(task)
             return
         task.status = "queued"
-        self.queues[self.forklift_pool].append(task_id)
-        self._pump(self.forklift_pool)
+        pool = self.picker_pool if task.direction == "piece_pick" else self.forklift_pool
+        if not pool or pool not in self.queues:
+            self._fail(task, "NO_RESOURCES", f"{task.task_id} 没有可用资源")
+            return
+        self.queues[pool].append(task_id)
+        self._pump(pool)
 
     def _on_travel_arrive(self, payload: Dict[str, Any]) -> None:
         task = self.tasks[payload["taskId"]]
@@ -957,6 +1176,12 @@ class DesEngine:
                 {"taskId": task.task_id, "dockId": task.dock_id, "palletEq": peq},
             )
             self.ship_event_ids.append(eid)
+        if task.direction == "piece_pick":
+            self.inventory.ship_cases(task.qty)
+            self._emit("case_ship", {"taskId": task.task_id, "qtyCases": task.qty, "locationId": task.location_id})
+            for row in self.piece_tasks:
+                if row.get("taskId") == task.task_id:
+                    row["status"] = "done"
         task.status = "done"
         self._emit(
             "task_complete",
@@ -969,13 +1194,18 @@ class DesEngine:
             return False
         return shortest_path(self.adj, origin, dest) is not None
 
+    def _homes(self, kind: str) -> List[str]:
+        return [res.node_id for res in self.resources if res.resource_type == kind and res.node_id]
+
     def _reject_if_unlinked(self) -> None:
         """Stop at load when this workload has no aisle path. No events, no cards."""
-        homes = [res.node_id for res in self.resources if res.resource_type == "forklift" and res.node_id]
-        if not homes:
+        if not self._homes("forklift") and not self._homes("picker"):
             return
         for task in self.tasks.values():
             if task.path_mode in {"conveyor", "conveyor_then_access"}:
+                continue
+            homes = self._homes("picker" if task.direction == "piece_pick" else "forklift")
+            if not homes:
                 continue
             dest = task.dest_node
             if task.direction in {"outbound_ship", "break_bulk"} and not task.origin_node:

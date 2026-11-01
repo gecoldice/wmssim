@@ -555,7 +555,7 @@ def main() -> int:
         print(f"{ac}: 未执行")
 
     print("\n=== G-EDGE / G-BREAK fixtures ===")
-    check(run_suite() == 0, "G-EDGE-01..03 and G-BREAK-01..04")
+    check(run_suite() == 0, "G-EDGE, G-BREAK, and G-PICK")
 
     print("\n=== MX mixed-warehouse edge occupancy + break_bulk ===")
     print("spec_only stays spec_only; assert pass is not UA S-D1 and not a mini-gold substitute")

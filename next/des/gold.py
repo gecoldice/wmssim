@@ -21,10 +21,14 @@ def _initial_rows(raw: Any) -> List[Dict[str, Any]]:
     for loc, val in raw.items():
         if isinstance(val, dict):
             pallets = float(val.get("pallets") or 0)
+            cases = float(val.get("cases") or 0)
         else:
             pallets = float(val or 0)
+            cases = 0.0
         if pallets > 0:
             rows.append({"locationInstanceId": loc, "quantity": pallets, "unit": "pallet"})
+        if cases > 0:
+            rows.append({"locationInstanceId": loc, "quantity": cases, "unit": "case"})
     return rows
 
 
@@ -59,7 +63,11 @@ def run_fixture(fixture: Dict[str, Any]) -> Dict[str, Any]:
             "resources": resources,
             "tasks": scenario.get("tasks") or [],
             "casesPerPallet": scenario.get("casesPerPallet"),
-            "downstream": bool(scenario.get("downstreamPiecePick")),
+            "downstream": (
+                "run"
+                if scenario.get("downstreamPiecePick") == "run"
+                else bool(scenario.get("downstreamPiecePick"))
+            ),
         },
     )
 
@@ -96,6 +104,7 @@ def evaluate(fixture: Dict[str, Any]) -> List[str]:
         problems.append(f"conservation 不成立 {conservation}")
     _check_edges(fixture, result, problems)
     _check_break(fixture, result, problems)
+    _check_pick(fixture, result, problems)
     return problems
 
 
@@ -218,6 +227,38 @@ def _check_break(fixture: Dict[str, Any], result: Dict[str, Any], problems: List
                     problems.append(f"工位窗口重叠 {prev} {nxt}")
                 if float(nxt.get("waitSec") or 0) <= 1e-9 and nxt["t0"] + 1e-9 < prev["t1"]:
                     problems.append("后一托没有等到前一托结束")
+
+
+def _near(got: Any, want: float, label: str, problems: List[str]) -> None:
+    if got is None or abs(float(got) - float(want)) > 1e-6:
+        problems.append(f"{label} {got}，期望 {want}")
+
+
+def _check_pick(fixture: Dict[str, Any], result: Dict[str, Any], problems: List[str]) -> None:
+    if not str(fixture.get("fixtureId", "")).startswith("G-PICK"):
+        return
+    expected = fixture["expected"]
+    tasks = {row["taskId"]: row for row in result["trajectory"]["tasks"]}
+    for task_id, status in (expected.get("taskStatus") or {}).items():
+        got = (tasks.get(task_id) or {}).get("status")
+        if got != status:
+            problems.append(f"{task_id} 状态 {got}，期望 {status}")
+    cards = result["cards"]
+    _near(cards["wait"]["meanSec"], expected["waitMeanSec"], "等待均值", problems)
+    _near(cards["wait"]["p95Sec"], expected["waitP95Sec"], "等待 P95", problems)
+    _near(cards["throughput"]["outboundPalletEq"], expected["palletEq"], "托当量", problems)
+    _near(result["inventoryConservation"].get("casesShipped"), expected["casesShipped"], "发出箱数", problems)
+    picker_busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "picker")
+    forklift_busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "forklift")
+    _near(picker_busy, expected["pickerBusySec"], "拣货人占用秒", problems)
+    if "forkliftBusySec" in expected:
+        _near(forklift_busy, expected["forkliftBusySec"], "叉车占用秒", problems)
+    if cards["throughput"]["value"] not in (0, 0.0):
+        problems.append(f"箱作业把托盘吞吐写成了 {cards['throughput']['value']}")
+    if not result["trajectory"]["segments"]:
+        problems.append("没有拣选轨迹")
+    if not any(row["resourceType"] == "picker" and float(row["utilization"] or 0) > 0 for row in cards["utilization"]["byResourceType"]):
+        problems.append("拣货人利用率仍是 0")
 
 
 def _pallet_initial(fixture: Dict[str, Any], loc: str) -> float:

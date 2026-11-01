@@ -1,6 +1,6 @@
 # 仿真说明 · 人工摆放切片
 
-新引擎在 `next/des/`。它不引用旧引擎包。`full_pallet` 和 `break_bulk` 可以跑。单独的 `piece_pick` 是 `UNSUPPORTED_SCENARIO`，不产生运行。拆托同时带小件时只生成箱任务，不跑拣货人路径。通道边按 `maxConcurrent` 占用；图不连通在进入事件循环前拒绝，不发四卡。
+新引擎在 `next/des/`。它不引用旧引擎包。`full_pallet`、`break_bulk` 和 `piece_pick` 可以跑。拣货人走到箱所在位置，花 `processSec.piece_pick`，再走到包装台或发货月台。箱不计入托盘吞吐。`downstream` 为 `run` 时，拆托产生的箱会走这条人路径；`true` 或 `generate_only` 只生成箱任务骨架。通道边按 `maxConcurrent` 占用；图不连通在进入事件循环前拒绝，不发四卡。
 
 速度、取货秒、发运秒、评价时长必须由调用方给出。缺了就拒绝，引擎不填默认值。夹具里的 1.5 m/s、1.2 m/s、10 秒、5 秒和 4 托都标明为测试值。
 
@@ -8,7 +8,7 @@
 
 出库一托的阶段：`arrival`、可能的 `resource_wait`、`dispatch`、空驶 `travel_start` / `travel_arrive`、`pick`、载货行驶、`ship_start`、`ship`、`task_complete`。
 
-`ship.palletEq` 只在外部发运完成时记 1。叉车占用从派发到完成，含行驶。拣选资源不接整托，利用率为 0，单独成列。
+`ship.palletEq` 只在外部发运完成时记 1。箱发出记 `case_ship`，不加托当量。叉车和拣货人的占用都从派发到完成，含行驶。没有小件任务时，拣选资源利用率是 0，单独成列。
 
 到达是窗口内的均匀整数时刻。种子写入清单，不给到达加随机抖动。同一快照、同一场景、同一资源，两次事件序列一致，而且不改快照字节。
 

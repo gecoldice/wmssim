@@ -181,6 +181,9 @@ export function InspectorPanel({
               小件分拣
             </span>
           </label>
+          {fields.piecePick ? (
+            <p className="norm-note">拣货人从拣选工位取箱，送到包装台。箱数不计入托盘吞吐。</p>
+          ) : null}
           <div className="panel-row" style={{ marginTop: 14 }}>
             <h3>业务参数</h3>
           </div>
@@ -215,6 +218,17 @@ export function InspectorPanel({
             <NumberField label="取货时间" unit="秒" value={fields.pickSec} placeholder={copy.missing} onChange={(value) => onField({ pickSec: value })} />
             <NumberField label="发运时间" unit="秒" value={fields.shipSec} placeholder={copy.missing} onChange={(value) => onField({ shipSec: value })} />
           </div>
+          <div className="two-fields">
+            <NumberField label="拣选时间" unit="秒" value={fields.pieceSec} placeholder={copy.missing} onChange={(value) => onField({ pieceSec: value })} />
+            <NumberField label="拣选箱数" unit="箱" value={fields.caseQty} placeholder={copy.missing} onChange={(value) => onField({ caseQty: value })} />
+          </div>
+          <NumberField
+            label="每托箱数"
+            unit="箱/托"
+            value={fields.casesPerPallet}
+            placeholder={copy.missing}
+            onChange={(value) => onField({ casesPerPallet: value })}
+          />
           <NumberField
             label="到达窗口"
             unit="秒"
