@@ -122,6 +122,7 @@ function draftFromSaved(facility: Record<string, unknown>, document: Record<stri
         maxLoadKg: typeof params.max_load_kg === "number" ? params.max_load_kg : undefined,
         direction: typeof params.direction === "string" ? params.direction : undefined,
         allowLoadTypes: Array.isArray(params.allow_load_types) ? params.allow_load_types.map(String) : undefined,
+        capacitySlots: typeof params.capacity_slots === "number" ? params.capacity_slots : undefined,
       },
     ];
   });
@@ -539,7 +540,12 @@ export function Workbench() {
     } catch (error) {
       const raw = error instanceof Error ? error.message : "";
       const human =
-        raw.includes(copy.unsimulated) || raw.includes(copy.conveyorUnlinked) || raw.includes(copy.missingParams);
+        raw.includes(copy.unsimulated) ||
+        raw.includes(copy.conveyorUnlinked) ||
+        raw.includes(copy.missingParams) ||
+        raw.includes("合流至少要两个入口") ||
+        raw.includes("分流至少要两个出口") ||
+        raw.includes("缓冲位数未填写");
       setRun(null);
       setRejected(human ? raw : `${copy.simFail} ${raw}`);
       setMode("decision");

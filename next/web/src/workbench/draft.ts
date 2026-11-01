@@ -11,7 +11,14 @@ import {
   type BoxEl,
   type ColumnMark,
 } from "../canvas/geom";
-import { catalogItem, instancePrefix, isLinearConveyor, isPlaceable, type CatalogItem } from "../library/catalog";
+import {
+  catalogItem,
+  conveyorPortSpec,
+  instancePrefix,
+  isPlaceable,
+  isRuntimeConveyor,
+  type CatalogItem,
+} from "../library/catalog";
 
 export const MIXED_TEMPLATE_ID = "template.mixed_wh_v0";
 
@@ -39,6 +46,8 @@ export type PoseEl = {
   maxLoadKg?: number | null;
   direction?: string | null;
   allowLoadTypes?: string[] | null;
+  /** Buffer slots. Undefined uses 1 on CV-BUF-01; null means the user cleared it. */
+  capacitySlots?: number | null;
 };
 
 export type Draft = {
@@ -229,7 +238,7 @@ function headOn(conveyor: PoseEl, endRole: "in" | "out", other: PoseEl, hit: { a
 }
 
 export function snapConveyorEnds(el: PoseEl, others: PoseEl[]): { x: number; y: number } {
-  if (!isLinearConveyor(el.typeElementId)) return { x: el.x, y: el.y };
+  if (!isRuntimeConveyor(el.typeElementId)) return { x: el.x, y: el.y };
   let best: { dx: number; dy: number; d: number } | null = null;
   for (const end of conveyorEnds(el)) {
     for (const other of others) {
@@ -246,7 +255,8 @@ export function snapConveyorEnds(el: PoseEl, others: PoseEl[]): { x: number; y: 
 export function conveyorLinks(elements: PoseEl[]): ConveyorLink[] {
   const links: ConveyorLink[] = [];
   for (const el of elements) {
-    if (!isLinearConveyor(el.typeElementId)) continue;
+    if (!isRuntimeConveyor(el.typeElementId)) continue;
+    const ports = conveyorPortSpec(el.typeElementId);
     for (const end of conveyorEnds(el)) {
       let best: { other: PoseEl; d: number; along: number } | null = null;
       for (const other of elements) {
@@ -256,21 +266,23 @@ export function conveyorLinks(elements: PoseEl[]): ConveyorLink[] {
         if (!best || hit.d < best.d) best = { other, d: hit.d, along: hit.along };
       }
       if (!best) continue;
-      const neighborPort = `cv_${el.instanceId}_${end.role}`;
-      if (end.role === "in") {
-        links.push({
-          fromInstanceId: best.other.instanceId,
-          fromPort: neighborPort,
-          toInstanceId: el.instanceId,
-          toPort: "p_in",
-        });
-      } else {
-        links.push({
-          fromInstanceId: el.instanceId,
-          fromPort: "p_out",
-          toInstanceId: best.other.instanceId,
-          toPort: neighborPort,
-        });
+      for (const port of ports.filter((item) => item.role === end.role)) {
+        const neighborPort = `cv_${el.instanceId}_${port.id}`;
+        if (end.role === "in") {
+          links.push({
+            fromInstanceId: best.other.instanceId,
+            fromPort: neighborPort,
+            toInstanceId: el.instanceId,
+            toPort: port.id,
+          });
+        } else {
+          links.push({
+            fromInstanceId: el.instanceId,
+            fromPort: port.id,
+            toInstanceId: best.other.instanceId,
+            toPort: neighborPort,
+          });
+        }
       }
     }
   }
@@ -278,16 +290,23 @@ export function conveyorLinks(elements: PoseEl[]): ConveyorLink[] {
 }
 
 export function linearEndsLinked(el: PoseEl, links: ConveyorLink[]): boolean {
-  const inn = links.some((link) => link.toInstanceId === el.instanceId && link.toPort === "p_in");
-  const out = links.some((link) => link.fromInstanceId === el.instanceId && link.fromPort === "p_out");
-  return inn && out;
+  return portsLinked(el, links);
+}
+
+export function portsLinked(el: PoseEl, links: ConveyorLink[]): boolean {
+  const ports = conveyorPortSpec(el.typeElementId);
+  return ports.every((port) =>
+    port.role === "in"
+      ? links.some((link) => link.toInstanceId === el.instanceId && link.toPort === port.id)
+      : links.some((link) => link.fromInstanceId === el.instanceId && link.fromPort === port.id),
+  );
 }
 
 export function conveyorRefusal(draft: Draft): string {
-  const linear = draft.elements.filter((el) => isLinearConveyor(el.typeElementId));
-  if (!linear.length) return "";
+  const routed = draft.elements.filter((el) => isRuntimeConveyor(el.typeElementId));
+  if (!routed.length) return "";
   const missing: string[] = [];
-  for (const el of linear) {
+  for (const el of routed) {
     const names: string[] = [];
     if (!(el.lengthM > 0)) names.push("长度");
     if (!(el.widthM > 0)) names.push("宽度");
@@ -296,16 +315,18 @@ export function conveyorRefusal(draft: Draft): string {
     const load = el.maxLoadKg === undefined ? 1500 : el.maxLoadKg;
     const direction = el.direction === undefined ? "forward" : el.direction;
     const loads = el.allowLoadTypes === undefined ? ["pallet"] : el.allowLoadTypes;
+    const slots = el.typeElementId === "CV-BUF-01" ? (el.capacitySlots === undefined ? 1 : el.capacitySlots) : null;
     if (speed === null || !(speed > 0)) names.push("速度");
     if (throughput === null || !(throughput > 0)) names.push("吞吐");
     if (load === null || !(load > 0)) names.push("载重");
     if (!direction) names.push("方向");
     if (!loads || !loads.length) names.push("允许货型");
+    if (el.typeElementId === "CV-BUF-01" && (slots === null || !Number.isInteger(slots) || slots < 1)) names.push("缓冲位数");
     if (names.length) missing.push(`${names.join("、")}（${el.typeElementId}）`);
   }
   if (missing.length) return `还差必填参数才能推演：${missing.join("；")}`;
   const links = conveyorLinks(draft.elements);
-  const open = linear.filter((el) => !linearEndsLinked(el, links));
+  const open = routed.filter((el) => !portsLinked(el, links));
   if (open.length) return `输送还没接上：把端口对到邻段或月台后再推演（${open.map((el) => el.typeElementId).join("、")}）`;
   return "";
 }
@@ -554,7 +575,7 @@ function elementParams(el: PoseEl, elements: PoseEl[]): Record<string, unknown> 
   if (el.typeElementId.startsWith("CV-")) {
     const speed = el.speedMpm === undefined ? 30 : el.speedMpm;
     if (speed !== null) params.speed_mpm = speed;
-    if (isLinearConveyor(el.typeElementId)) {
+    if (isRuntimeConveyor(el.typeElementId)) {
       if (el.throughputUph != null) params.throughput_uph = el.throughputUph;
       else if (el.throughputUph === undefined) params.throughput_uph = 120;
       if (el.maxLoadKg != null) params.max_load_kg = el.maxLoadKg;
@@ -563,14 +584,16 @@ function elementParams(el: PoseEl, elements: PoseEl[]): Record<string, unknown> 
       if (el.direction === null) delete params.direction;
       params.allow_load_types = el.allowLoadTypes === null ? undefined : el.allowLoadTypes || ["pallet"];
       if (el.allowLoadTypes === null) delete params.allow_load_types;
-      params.ports = [
-        { id: "p_in", role: "in" },
-        { id: "p_out", role: "out" },
-      ];
-      params.connector_ids = ["p_in", "p_out"];
+      const ports = conveyorPortSpec(el.typeElementId);
+      params.ports = ports;
+      params.connector_ids = ports.map((port) => port.id);
       params.conveyorLinks = conveyorLinks(elements).filter(
         (link) => link.fromInstanceId === el.instanceId || link.toInstanceId === el.instanceId,
       );
+      if (el.typeElementId === "CV-BUF-01") {
+        const slots = el.capacitySlots === undefined ? 1 : el.capacitySlots;
+        if (slots !== null) params.capacity_slots = slots;
+      }
     }
   }
   if (el.typeElementId === "ST-FLOOR-01") {
@@ -802,11 +825,13 @@ export function elementFromDrop(
 
 function conveyorDefaults(type: PlaceableType): Partial<PoseEl> {
   if (!type.startsWith("CV-")) return {};
+  const runtime = isRuntimeConveyor(type);
   return {
     speedMpm: 30,
-    throughputUph: isLinearConveyor(type) ? 120 : null,
-    maxLoadKg: isLinearConveyor(type) ? 1500 : null,
-    direction: isLinearConveyor(type) ? "forward" : null,
-    allowLoadTypes: isLinearConveyor(type) ? ["pallet"] : null,
+    throughputUph: runtime ? 120 : null,
+    maxLoadKg: runtime ? 1500 : null,
+    direction: runtime ? "forward" : null,
+    allowLoadTypes: runtime ? ["pallet"] : null,
+    ...(type === "CV-BUF-01" ? { capacitySlots: 1 } : {}),
   };
 }

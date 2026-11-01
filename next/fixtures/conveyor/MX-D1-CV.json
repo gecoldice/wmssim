@@ -44,6 +44,6 @@
       "assert": "四卡有限数非 NaN；瓶颈 TopN 候选可含 CV instanceId；不强制业务接量"
     },
     "trajectory": { "segmentsNonEmpty": true },
-    "kpiHonesty": "MX-D1-CV 通 ≠ MX-D1-EB 替代；≠ UA S-D1；≠ 弯道合流已接"
+    "kpiHonesty": "MX-D1-CV 通 ≠ MX-D1-EB 替代；≠ UA S-D1。旁路仍是直线，不代替 G-CV-04 至 G-CV-07。"
   }
 }

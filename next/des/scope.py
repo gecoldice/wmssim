@@ -1,7 +1,7 @@
 """Types this manual slice will place but will not pretend to simulate.
 
-CV-STR-01, CV-ROL-01 and CV-BELT-01 have a straight-line runtime.
-Every other CV type, plus AGV / ASRS / crane, still refuses.
+Straight, curve, merge, divert and buffer conveyors have a runtime.
+Vertical, chute, loop, induct, plus AGV / ASRS / crane, still refuse.
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Iterable, List
 
 _LINEAR = {"CV-STR-01", "CV-ROL-01", "CV-BELT-01"}
+_ROUTED = _LINEAR | {"CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01"}
 
 _EXACT = {
     "MH-AGV-01",
@@ -23,7 +24,7 @@ _EXACT = {
 
 
 def is_unsimulated(type_id: str) -> bool:
-    if type_id in _LINEAR:
+    if type_id in _ROUTED:
         return False
     return type_id.startswith("CV-") or type_id in _EXACT
 

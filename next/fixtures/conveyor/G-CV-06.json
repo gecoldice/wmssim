@@ -1,0 +1,141 @@
+{
+  "fixtureId": "G-CV-06",
+  "title": "分流 CV-DIV-01：去向只走所选支路",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "spec_only",
+  "note": "分流口 2 m，B 支路 4 m，都是 30 mpm。A 支路不进该任务的轨迹。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_cv_div_06",
+    "layoutRevision": "cv_rev_g06",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      {
+        "instanceId": "DIV",
+        "elementId": "CV-DIV-01",
+        "kind": "device",
+        "pose": { "x": 0, "y": 0, "orientation_deg": 0 },
+        "params": {
+          "length_m": 2,
+          "width_m": 2,
+          "speed_mpm": 30,
+          "throughput_uph": 60,
+          "max_load_kg": 500,
+          "direction": "forward",
+          "allow_load_types": ["pallet"]
+        },
+        "connector_ids": ["p_in", "p_out_a", "p_out_b"],
+        "ports": [
+          { "id": "p_in", "role": "in" },
+          { "id": "p_out_a", "role": "out" },
+          { "id": "p_out_b", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "BR_A",
+        "elementId": "CV-STR-01",
+        "kind": "device",
+        "pose": { "x": 4, "y": 2, "orientation_deg": 0 },
+        "params": {
+          "length_m": 4,
+          "width_m": 0.9,
+          "speed_mpm": 30,
+          "throughput_uph": 60,
+          "max_load_kg": 500,
+          "direction": "forward",
+          "allow_load_types": ["pallet"]
+        },
+        "connector_ids": ["p_in", "p_out"],
+        "ports": [
+          { "id": "p_in", "role": "in" },
+          { "id": "p_out", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "BR_B",
+        "elementId": "CV-STR-01",
+        "kind": "device",
+        "pose": { "x": 4, "y": -2, "orientation_deg": 0 },
+        "params": {
+          "length_m": 4,
+          "width_m": 0.9,
+          "speed_mpm": 30,
+          "throughput_uph": 60,
+          "max_load_kg": 500,
+          "direction": "forward",
+          "allow_load_types": ["pallet"]
+        },
+        "connector_ids": ["p_in", "p_out"],
+        "ports": [
+          { "id": "p_in", "role": "in" },
+          { "id": "p_out", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "SRC",
+        "elementId": "IN-BUF-01",
+        "kind": "staging",
+        "pose": { "x": -3, "y": 0 },
+        "accessNodeId": "N_src",
+        "labels": ["recv"],
+        "connector_ids": ["to_cv"],
+        "ports": [{ "id": "to_cv", "role": "out" }]
+      },
+      {
+        "instanceId": "DST_A",
+        "elementId": "OUT-BUF-01",
+        "kind": "staging",
+        "pose": { "x": 8, "y": 2 },
+        "accessNodeId": "N_a",
+        "labels": ["hold"],
+        "connector_ids": ["from_cv"],
+        "ports": [{ "id": "from_cv", "role": "in" }]
+      },
+      {
+        "instanceId": "DST_B",
+        "elementId": "OUT-BUF-01",
+        "kind": "staging",
+        "pose": { "x": 8, "y": -2 },
+        "accessNodeId": "N_b",
+        "labels": ["ship"],
+        "connector_ids": ["from_cv"],
+        "ports": [{ "id": "from_cv", "role": "in" }]
+      },
+      { "elementId": "N_src", "kind": "node", "pose": { "x": -3, "y": 0 } },
+      { "elementId": "N_a", "kind": "node", "pose": { "x": 8, "y": 2 } },
+      { "elementId": "N_b", "kind": "node", "pose": { "x": 8, "y": -2 } }
+    ],
+    "connections": [
+      { "from": { "instanceId": "SRC", "portId": "to_cv" }, "to": { "instanceId": "DIV", "portId": "p_in" } },
+      { "from": { "instanceId": "DIV", "portId": "p_out_a" }, "to": { "instanceId": "BR_A", "portId": "p_in" } },
+      { "from": { "instanceId": "BR_A", "portId": "p_out" }, "to": { "instanceId": "DST_A", "portId": "from_cv" } },
+      { "from": { "instanceId": "DIV", "portId": "p_out_b" }, "to": { "instanceId": "BR_B", "portId": "p_in" } },
+      { "from": { "instanceId": "BR_B", "portId": "p_out" }, "to": { "instanceId": "DST_B", "portId": "from_cv" } }
+    ],
+    "edges": []
+  },
+  "scenario": {
+    "expectedLayoutRevision": "cv_rev_g06",
+    "horizonSec": 300,
+    "seed": 206,
+    "resources": [],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SRC",
+        "destId": "DST_B",
+        "pathMode": "conveyor",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SRC": 1 }
+  },
+  "expected": {
+    "mustReject": false,
+    "handCheck": "分流口 2 / 0.5 = 4 s，B 支路 4 / 0.5 = 8 s，全程 12 s。轨迹只有 DIV 和 BR_B。等待 0。1 托 / (300/3600) h = 12 palletEq/h。",
+    "kpiHonesty": "本夹具通 ≠ UA S-D1 / 全库 KPI 绿。status 保持 spec_only。"
+  }
+}

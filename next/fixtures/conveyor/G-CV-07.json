@@ -1,0 +1,96 @@
+{
+  "fixtureId": "G-CV-07",
+  "title": "缓冲 CV-BUF-01：capacity_slots=1 时与合流同样等待",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "spec_only",
+  "note": "6 m @ 30 mpm = 12 s。位数改为 2 时两托同时进入，等待都是 0。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_cv_buf_07",
+    "layoutRevision": "cv_rev_g07",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      {
+        "instanceId": "BUF1",
+        "elementId": "CV-BUF-01",
+        "kind": "device",
+        "pose": { "x": 0, "y": 0, "orientation_deg": 0 },
+        "params": {
+          "length_m": 6,
+          "width_m": 2,
+          "speed_mpm": 30,
+          "throughput_uph": 60,
+          "max_load_kg": 500,
+          "direction": "forward",
+          "allow_load_types": ["pallet"],
+          "capacity_slots": 1
+        },
+        "connector_ids": ["p_in", "p_out"],
+        "ports": [
+          { "id": "p_in", "role": "in" },
+          { "id": "p_out", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "SRC",
+        "elementId": "IN-BUF-01",
+        "kind": "staging",
+        "pose": { "x": -4, "y": 0 },
+        "accessNodeId": "N_src",
+        "labels": ["recv"],
+        "connector_ids": ["to_cv"],
+        "ports": [{ "id": "to_cv", "role": "out" }]
+      },
+      {
+        "instanceId": "DST",
+        "elementId": "OUT-BUF-01",
+        "kind": "staging",
+        "pose": { "x": 6, "y": 0 },
+        "accessNodeId": "N_dst",
+        "labels": ["ship"],
+        "connector_ids": ["from_cv"],
+        "ports": [{ "id": "from_cv", "role": "in" }]
+      },
+      { "elementId": "N_src", "kind": "node", "pose": { "x": -4, "y": 0 } },
+      { "elementId": "N_dst", "kind": "node", "pose": { "x": 6, "y": 0 } }
+    ],
+    "connections": [
+      { "from": { "instanceId": "SRC", "portId": "to_cv" }, "to": { "instanceId": "BUF1", "portId": "p_in" } },
+      { "from": { "instanceId": "BUF1", "portId": "p_out" }, "to": { "instanceId": "DST", "portId": "from_cv" } }
+    ],
+    "edges": []
+  },
+  "scenario": {
+    "expectedLayoutRevision": "cv_rev_g07",
+    "horizonSec": 300,
+    "seed": 207,
+    "resources": [],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SRC",
+        "destId": "DST",
+        "pathMode": "conveyor",
+        "readyAt": 0
+      },
+      {
+        "taskId": "T2",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SRC",
+        "destId": "DST",
+        "pathMode": "conveyor",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SRC": 2 }
+  },
+  "expected": {
+    "mustReject": false,
+    "handCheck": "位数 1：占用 12 s。T1 等待 0，T2 等待 12。均值 6，P95 12。吞吐 24 palletEq/h。位数 2：两托 t=0 进入，等待都是 0。",
+    "kpiHonesty": "本夹具通 ≠ UA S-D1 / 全库 KPI 绿。status 保持 spec_only。"
+  }
+}
