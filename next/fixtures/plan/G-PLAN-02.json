@@ -1,0 +1,101 @@
+{
+  "fixtureId": "G-PLAN-02",
+  "title": "搜索上限只有一台时，等不及就拒绝",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "目标仍是等待均值不超过 0。上限是 1 台，而一台的均值是 10 秒，所以拒绝，不给一个凑出来的台数。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_plan_02",
+    "layoutRevision": "plan_rev_g02",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_slot", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_ship", "kind": "node", "pose": { "x": 20, "y": 0 } },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 2
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": { "x": 20, "y": 2 },
+        "accessNodeId": "N_ship",
+        "labels": ["ship"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_slot",
+        "from": "N_home",
+        "to": "N_slot",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_slot_ship",
+        "from": "N_slot",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "plan_rev_g02",
+    "horizonSec": 600,
+    "seed": 602,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_home",
+        "travelSpeedMps": 1,
+        "emptySpeedMps": 1
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      },
+      {
+        "taskId": "T2",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SLOT_A": 2 }
+  },
+  "expected": {
+    "mustReject": true,
+    "waitMeanMaxSec": 0,
+    "maxCount": 1,
+    "rejectReasonCode": "INPUT_UNCONFIRMED",
+    "rejectMessageContains": "加到上限等待仍超过目标",
+    "kpiHonesty": "等不及就拒绝 ≠ 报价"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_plan.py"
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "fixtureId": "G-PLAN-01",
+  "title": "两托同时就绪，等到均值不超过 0 的最少叉车",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "一台叉车时第二托等满 20 秒。两台同时出发，边容量 2，等待都是 0。搜索停在第一台满足目标的数量。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_plan_01",
+    "layoutRevision": "plan_rev_g01",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_slot", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_ship", "kind": "node", "pose": { "x": 20, "y": 0 } },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 2
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": { "x": 20, "y": 2 },
+        "accessNodeId": "N_ship",
+        "labels": ["ship"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_slot",
+        "from": "N_home",
+        "to": "N_slot",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_slot_ship",
+        "from": "N_slot",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "plan_rev_g01",
+    "horizonSec": 600,
+    "seed": 601,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_home",
+        "travelSpeedMps": 1,
+        "emptySpeedMps": 1
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      },
+      {
+        "taskId": "T2",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SLOT_A",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SLOT_A": 2 }
+  },
+  "expected": {
+    "mustReject": false,
+    "waitMeanMaxSec": 0,
+    "maxCount": 4,
+    "forkliftCount": 2,
+    "tried": [
+      { "forkliftCount": 1, "waitMeanSec": 10, "waitP95Sec": 20 },
+      { "forkliftCount": 2, "waitMeanSec": 0, "waitP95Sec": 0 }
+    ],
+    "handCheck": "一台：T1 等待 0，T2 等待 20，均值 10，n=2 的 P95 名次 2 = 20。两台同时走，边容量 2，等待 0。目标是均值不超过 0，所以停在 2 台。",
+    "kpiHonesty": "按等待找台数 ≠ 报价，也 ≠ 全仓 KPI 绿"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_plan.py"
+  }
+}

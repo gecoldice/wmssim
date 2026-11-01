@@ -30,6 +30,7 @@ from des.engine import ENGINE_VERSION, run_des  # noqa: E402
 from des.errors import DesError  # noqa: E402
 from des.gold import run_suite  # noqa: E402
 from des.mxeval import run_suite as run_mx_suite  # noqa: E402
+from des.plan import run_suite as run_plan_suite  # noqa: E402
 from des.scope import is_unsimulated, unsimulated_message  # noqa: E402
 from des.validate import validate_layout  # noqa: E402
 
@@ -557,6 +558,10 @@ def main() -> int:
 
     print("\n=== G-EDGE / G-BREAK fixtures ===")
     check(run_suite() == 0, "G-EDGE, G-BREAK, G-PICK, G-TURN, G-WAY, G-AGV, and G-ASRS")
+
+    print("\n=== forklift count search ===")
+    print("count search is not a price and not a layout comparison")
+    check(run_plan_suite() == 0, "G-PLAN-01 and G-PLAN-02")
 
     print("\n=== MX mixed-warehouse edge occupancy + break_bulk ===")
     print("spec_only stays spec_only; assert pass is not UA S-D1 and not a mini-gold substitute")
