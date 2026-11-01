@@ -1,6 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { copy } from "../copy";
-import { formatP95, formatRate, formatThroughput, formatWait, runReport } from "./format.js";
+import { cardDeltaText, formatP95, formatRate, formatThroughput, formatWait, pinCards, runReport, unitAmount } from "./format.js";
+
+type CardPin = {
+  layoutRevision: string;
+  throughput: number | null;
+  waitMeanSec: number | null;
+  waitP95Sec: number | null;
+  forkliftCount: number | null;
+  bottleneckId: string;
+};
 
 type UtilRow = { resourceType?: string; resourceId?: string; utilization?: number | null; resourceCount?: number };
 type Bottle = { entityId?: string; waitSec?: number; share?: number };
@@ -18,6 +27,9 @@ type Props = {
   onSimT: (value: number) => void;
   onTogglePlay: () => void;
   onBack: () => void;
+  pinned?: CardPin | null;
+  onPin?: () => void;
+  unitPrice?: number | null;
   children: ReactNode;
 };
 
@@ -34,6 +46,9 @@ export function RunCards({
   onSimT,
   onTogglePlay,
   onBack,
+  pinned,
+  onPin,
+  unitPrice,
   children,
 }: Props) {
   const cards = (run?.cards ?? null) as Record<string, unknown> | null;
@@ -52,6 +67,10 @@ export function RunCards({
   const banner = rejected || (showCards ? null : idleNotice || copy.notRun);
   const bannerClass = rejected || (banner && banner.startsWith(copy.unsimulated)) ? "rejected" : "decision-idle";
   const [report, setReport] = useState("");
+  const currentPin = run && showCards ? pinCards(run) : null;
+  const forkliftCount = currentPin?.forkliftCount ?? null;
+  const amount = showCards && forkliftCount !== null ? unitAmount(forkliftCount, unitPrice ?? null) : null;
+  const delta = showCards && pinned && currentPin ? cardDeltaText(pinned, currentPin) : "";
   function onReport() {
     if (!run || !showCards) return;
     const text = runReport(run);
@@ -86,6 +105,9 @@ export function RunCards({
           >
             仿真报告
           </button>
+          <button className="ghost-btn" id="pinCards" type="button" disabled={!showCards} onClick={onPin}>
+            记下这组四卡
+          </button>
           <button className="ghost-btn" type="button" disabled title="本切片不导出设备清单">
             设备清单
           </button>
@@ -99,6 +121,12 @@ export function RunCards({
       {showCards && report ? (
         <pre className="run-report" id="runReportText">
           {report}
+        </pre>
+      ) : null}
+      {amount?.ok ? <p id="runUnitAmount">{amount.text}</p> : null}
+      {delta ? (
+        <pre className="card-delta" id="cardDelta">
+          {delta}
         </pre>
       ) : null}
       {showCards ? <div className="kpis">

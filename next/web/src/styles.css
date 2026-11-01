@@ -258,7 +258,7 @@ details:not([open]) .fold-summary h3::before { content: "▸ "; }
 .stale-banner { background: #fff4e4; color: #a96d2a; border: 1px solid #efd9b6; border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 12px; }
 .rejected { background: var(--red-bg); color: var(--red); border: 1px solid #f0d0cd; border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 12px; }
 .decision-idle { background: #f3f6f5; color: #6d8381; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
-.run-report {
+.run-report, .card-delta {
   white-space: pre-wrap; background: #fff; border: 1px solid var(--line); border-radius: 8px;
   padding: 12px 14px; font-size: 12px; line-height: 1.6; margin: 0 0 14px; color: var(--ink);
 }

@@ -31,7 +31,7 @@ import {
   type NormPhase,
   type SpecPackId,
 } from "../prepare/norms";
-import { acceptRun, staleMessage } from "../run-cards/format.js";
+import { acceptRun, pinCards, staleMessage } from "../run-cards/format.js";
 import { actorsAt, segmentBounds, type Segment } from "../run-cards/playback";
 import { RunCards } from "../run-cards/RunCards";
 import {
@@ -177,6 +177,7 @@ export function Workbench() {
   const [future, setFuture] = useState<Draft[]>([]);
   const [scenario, setScenario] = useState<ScenarioFields>(emptyScenario());
   const [crew, setCrew] = useState<CrewSearchResult | null>(null);
+  const [pinned, setPinned] = useState<ReturnType<typeof pinCards>>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("");
   const [facilityId, setFacilityId] = useState("facility-main");
@@ -1012,6 +1013,14 @@ export function Workbench() {
           }}
           onTogglePlay={() => setPlaying((value) => !value)}
           onBack={() => setMode("edit")}
+          pinned={pinned}
+          onPin={() => {
+            const next = run ? pinCards(run) : null;
+            if (!next) return;
+            setPinned(next);
+            note("已记下这组四卡。");
+          }}
+          unitPrice={parseNum(scenario.forkliftPrice)}
         >
           {canvas}
         </RunCards>
