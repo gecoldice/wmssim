@@ -1015,12 +1015,20 @@ export function Workbench() {
           onBack={() => setMode("edit")}
           pinned={pinned}
           onPin={() => {
-            const next = run ? pinCards(run) : null;
+            const next = run
+              ? pinCards(run, {
+                  forklift: parseNum(scenario.forkliftPrice),
+                  picker: parseNum(scenario.pickerPrice),
+                  agv: parseNum(scenario.agvPrice),
+                })
+              : null;
             if (!next) return;
             setPinned(next);
             note("已记下这组四卡。");
           }}
           unitPrice={parseNum(scenario.forkliftPrice)}
+          pickerPrice={parseNum(scenario.pickerPrice)}
+          agvPrice={parseNum(scenario.agvPrice)}
         >
           {canvas}
         </RunCards>

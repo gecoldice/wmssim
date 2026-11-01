@@ -252,7 +252,7 @@ export function InspectorPanel({
           {testValues ? <div className="constraint warn">{copy.testBanner}</div> : null}
           <div className="two-fields" style={{ marginTop: 11 }}>
             <NumberField label="叉车数量" unit="台" value={fields.forklifts} placeholder={copy.missing} onChange={(value) => onField({ forklifts: value })} />
-            <NumberField label="拣货人数" unit="人" value={fields.pickers} placeholder={copy.missing} onChange={(value) => onField({ pickers: value })} />
+            <NumberField label="拣货人数" unit="人" inputId="pickers" value={fields.pickers} placeholder={copy.missing} onChange={(value) => onField({ pickers: value })} />
           </div>
           <NumberField
             label="AGV 数量"
@@ -322,7 +322,25 @@ export function InspectorPanel({
             placeholder={copy.missing}
             onChange={(value) => onField({ forkliftPrice: value })}
           />
-          <p className="inspector-empty">留空不算金额。这里没有价目表。</p>
+          <div className="two-fields">
+            <NumberField
+              label="拣货人单价"
+              unit="元/人"
+              inputId="pickerPrice"
+              value={fields.pickerPrice}
+              placeholder={copy.missing}
+              onChange={(value) => onField({ pickerPrice: value })}
+            />
+            <NumberField
+              label="AGV 单价"
+              unit="元/台"
+              inputId="agvPrice"
+              value={fields.agvPrice}
+              placeholder={copy.missing}
+              onChange={(value) => onField({ agvPrice: value })}
+            />
+          </div>
+          <p className="inspector-empty">留空不算金额。有人开车却没填单价时，不算合计。这里没有价目表。</p>
           <button className="ghost-btn" id="forkliftCountSearch" type="button" disabled={searchBusy} onClick={() => onSearch?.()}>
             按等待找最少叉车
           </button>
