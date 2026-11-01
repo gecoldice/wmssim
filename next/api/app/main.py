@@ -1,8 +1,9 @@
 """Manual-slice HTTP API.
 
 Only the endpoints in the rewrite plan, plus the read halves needed to reload a
-saved layout. Planning, cost, compare, and recognition are not registered.
-Prepare and simulation return 202 and a jobId; the worker is in-process.
+saved layout, plus a synchronous forklift-count search. Cost, layout compare,
+and recognition are not registered. Prepare and simulation return 202 and a
+jobId; the worker is in-process. Health keeps planning false.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from des.conveyor import assess_snapshot
 from des.derive import derive_snapshot
 from des.engine import run_des
 from des.errors import DesError
+from des.plan import smallest_pool_count
 from des.scope import unsimulated_ids, unsimulated_message
 from des.validate import validate_layout
 
@@ -373,11 +375,11 @@ def get_job(job_id: str) -> Any:
         return _job_view(job)
 
 
-@app.post("/api/v1/simulation-jobs", status_code=202)
-def simulate(body: Dict[str, Any]) -> Any:
+def _ready_inputs(body: Dict[str, Any]) -> Any:
+    """Layout-ready, schema, and unsimulated gates shared with simulation."""
     layout_ref = (body or {}).get("layoutRef") or {}
-    demand = (body or {}).get("demand") or {}
-    operating = (body or {}).get("operating") or {}
+    demand = deepcopy((body or {}).get("demand") or {})
+    operating = deepcopy((body or {}).get("operating") or {})
     run_control = (body or {}).get("runControl") or {}
     with store.lock:
         row = store.layouts.get(layout_ref.get("id"))
@@ -403,8 +405,6 @@ def simulate(body: Dict[str, Any]) -> Any:
                 "布局尚未准备通过，拒绝推演",
                 {"objectIds": ids, "layoutRevision": row["revision"]},
             )
-        demand = deepcopy(demand)
-        operating = deepcopy(operating)
         demand["contractVersion"] = "0.3"
         operating["contractVersion"] = "0.3"
         demand.setdefault("id", "demand-inline")
@@ -441,6 +441,44 @@ def simulate(body: Dict[str, Any]) -> Any:
                 "快照修订与请求修订不相等",
                 {"snapshot": snapshot.get("layoutRevision"), "expected": expected},
             )
+    return {
+        "demand": demand,
+        "operating": operating,
+        "run_control": run_control,
+        "snapshot": snapshot,
+        "expected": expected,
+    }
+
+
+def _count_limits(body: Dict[str, Any]) -> Any:
+    raw_wait = (body or {}).get("waitMeanMaxSec")
+    raw_max = (body or {}).get("maxCount")
+    if isinstance(raw_wait, bool):
+        return _error(422, "INPUT_UNCONFIRMED", "等待均值上限不能为负", {"waitMeanMaxSec": raw_wait})
+    try:
+        wait_mean_max = float(raw_wait)
+    except (TypeError, ValueError):
+        return _error(422, "INPUT_UNCONFIRMED", "等待均值上限不能为负", {"waitMeanMaxSec": raw_wait})
+    if wait_mean_max != wait_mean_max or wait_mean_max in (float("inf"), float("-inf")):
+        return _error(422, "INPUT_UNCONFIRMED", "等待均值上限不能为负", {"waitMeanMaxSec": raw_wait})
+    if isinstance(raw_max, bool) or not isinstance(raw_max, (int, float)):
+        return _error(422, "INPUT_UNCONFIRMED", "叉车搜索上限至少是 1", {"maxCount": raw_max})
+    if isinstance(raw_max, float) and not raw_max.is_integer():
+        return _error(422, "INPUT_UNCONFIRMED", "叉车搜索上限至少是 1", {"maxCount": raw_max})
+    return wait_mean_max, int(raw_max)
+
+
+@app.post("/api/v1/simulation-jobs", status_code=202)
+def simulate(body: Dict[str, Any]) -> Any:
+    ready = _ready_inputs(body)
+    if isinstance(ready, JSONResponse):
+        return ready
+    demand = ready["demand"]
+    operating = ready["operating"]
+    run_control = ready["run_control"]
+    snapshot = ready["snapshot"]
+    expected = ready["expected"]
+    with store.lock:
         job_id = issue_revision("job")
         run_id = issue_revision("run")
         store.jobs[job_id] = {
@@ -477,6 +515,35 @@ def simulate(body: Dict[str, Any]) -> Any:
 
     _spawn(job_id, work)
     return {"jobId": job_id, "status": "queued", "kind": "simulation", "kpiFromUiDemo": False}
+
+
+@app.post("/api/v1/forklift-count-jobs")
+def forklift_count(body: Dict[str, Any]) -> Any:
+    ready = _ready_inputs(body)
+    if isinstance(ready, JSONResponse):
+        return ready
+    limits = _count_limits(body)
+    if isinstance(limits, JSONResponse):
+        return limits
+    wait_mean_max, max_count = limits
+    try:
+        found = smallest_pool_count(
+            ready["snapshot"],
+            ready["demand"],
+            ready["operating"],
+            ready["run_control"],
+            ready["expected"],
+            wait_mean_max=wait_mean_max,
+            max_count=max_count,
+        )
+    except DesError as exc:
+        status = 500 if exc.code == "COMPUTATION_FAILED" else 422
+        details = exc.details if isinstance(exc.details, dict) else {}
+        return _error(status, exc.code, exc.message, details)
+    blob = json.dumps(found, ensure_ascii=False)
+    if "price" in blob.lower() or "元" in blob or "报价" in blob:
+        return _error(500, "COMPUTATION_FAILED", "结果里出现了价格")
+    return found
 
 
 @app.get("/api/v1/runs/{run_id}")

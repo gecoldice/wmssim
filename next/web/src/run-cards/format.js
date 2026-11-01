@@ -41,3 +41,31 @@ export function acceptRun(payload) {
   }
   return { ok: true, run: payload };
 }
+
+/** Transcribe the four cards already on this run. No prices, no extra KPIs. */
+export function runReport(run) {
+  if (!run || run.kpiFromUiDemo !== false) return "";
+  const cards = run.cards || {};
+  const throughput = cards.throughput || {};
+  const wait = cards.wait || {};
+  const util = cards.utilization || {};
+  const bottle = cards.bottleneck || {};
+  const types = (util.byResourceType || []).map((row) => `${row.resourceType} ${formatRate(row.utilization ?? null)}`);
+  const ids = (util.byResource || []).map((row) => `${row.resourceId} ${formatRate(row.utilization ?? null)}`);
+  const top = (bottle.topN || [])[0];
+  const manifest = run.runManifest || {};
+  const lines = [
+    "仿真报告",
+    `布局修订 ${run.layoutRevision || "未签发"}`,
+    `引擎 ${manifest.engineVersion || "未签发"}`,
+    `托盘吞吐 ${formatThroughput(throughput.value ?? null)} 托当量/时`,
+    `任务等待 ${formatWait(wait.meanSec ?? null)} 秒`,
+    `等待 P95 ${formatP95(wait.p95Sec ?? null)} 秒`,
+    `资源利用率 ${types.join("，") || "无"}`,
+    `资源 ${ids.join("，") || "无"}`,
+    `主要瓶颈 ${top ? top.entityId : "无等待样本"}`,
+    top ? `瓶颈等待 ${formatWait(top.waitSec ?? null)} 秒` : "瓶颈等待 无等待样本",
+    "本报告只转写这一次运行的四卡，不含价格。",
+  ];
+  return lines.join("\n");
+}

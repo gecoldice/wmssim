@@ -86,6 +86,8 @@ export type ScenarioFields = {
   caseQty: string;
   casesPerPallet: string;
   turnRadius: string;
+  waitMeanMax: string;
+  maxForklifts: string;
 };
 
 const EVIDENCE = {
@@ -432,6 +434,8 @@ export function emptyScenario(): ScenarioFields {
     caseQty: "",
     casesPerPallet: "",
     turnRadius: "",
+    waitMeanMax: "",
+    maxForklifts: "",
   };
 }
 
@@ -455,6 +459,8 @@ export function testScenario(): ScenarioFields {
     caseQty: "",
     casesPerPallet: "",
     turnRadius: "",
+    waitMeanMax: "",
+    maxForklifts: "",
   };
 }
 

@@ -180,6 +180,52 @@ def main() -> int:
     check(all("planning" not in path and "cost" not in path for path in s01["paths"]), "S-01 sequence has no planning API")
     check((s01["run"] or {}).get("kpiFromUiDemo") is False, "S-01 kpiFromUiDemo false")
 
+    print("\n=== forklift count on a prepared layout ===")
+    counted = client.post(
+        "/api/v1/forklift-count-jobs",
+        json={
+            "layoutRef": s01["layoutRef"],
+            "demand": demand,
+            "operating": operating,
+            "runControl": {
+                "horizonSec": 3600,
+                "seedStreams": {"demand": 7},
+                "metricDefinitionVersion": "metrics-slice-manual-v1",
+            },
+            "waitMeanMaxSec": 1e9,
+            "maxCount": 4,
+        },
+    )
+    counted_body = counted.json()
+    counted_blob = json.dumps(counted_body, ensure_ascii=False)
+    print("forklift count", counted.status_code, counted_blob[:800])
+    check(
+        counted.status_code == 200
+        and counted_body.get("forkliftCount") == 1
+        and len(counted_body.get("tried") or []) == 1
+        and counted_body.get("kpiFromUiDemo") is False,
+        "huge wait target stops at one forklift",
+    )
+    check("price" not in counted_blob.lower() and "元" not in counted_blob and "报价" not in counted_blob, "count response has no price")
+    negative = client.post(
+        "/api/v1/forklift-count-jobs",
+        json={
+            "layoutRef": s01["layoutRef"],
+            "demand": demand,
+            "operating": operating,
+            "runControl": {
+                "horizonSec": 3600,
+                "seedStreams": {"demand": 7},
+                "metricDefinitionVersion": "metrics-slice-manual-v1",
+            },
+            "waitMeanMaxSec": -1,
+            "maxCount": 4,
+        },
+    )
+    print("negative wait", negative.status_code, negative.text[:300])
+    check(negative.status_code == 422 and "等待均值上限不能为负" in negative.text, "negative wait target refused")
+    check(client.get("/api/v1/health").json().get("planning") is False, "health planning stays false")
+
     print("\n=== S-02 rectangle template uses the same helper ===")
     workbench = (ROOT / "next" / "web" / "src" / "workbench" / "Workbench.tsx").read_text(encoding="utf-8")
     builders = (ROOT / "next" / "web" / "src" / "workbench" / "draft.ts").read_text(encoding="utf-8")
@@ -561,7 +607,7 @@ def main() -> int:
 
     print("\n=== forklift count search ===")
     print("count search is not a price and not a layout comparison")
-    check(run_plan_suite() == 0, "G-PLAN-01 and G-PLAN-02")
+    check(run_plan_suite() == 0, "G-PLAN-01 through G-PLAN-04")
 
     print("\n=== MX mixed-warehouse edge occupancy + break_bulk ===")
     print("spec_only stays spec_only; assert pass is not UA S-D1 and not a mini-gold substitute")

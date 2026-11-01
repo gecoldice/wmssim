@@ -1,0 +1,102 @@
+{
+  "fixtureId": "G-PLAN-03",
+  "title": "两托错开到达，等到均值不超过 0 的最少叉车",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "到达窗口 20 秒、两托，时刻是 0 和 10。一台叉车一趟 35 秒，第二托等 25 秒。两台时第二托到达另一台还空着。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_plan_03",
+    "layoutRevision": "plan_rev_g03",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_slot", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_ship", "kind": "node", "pose": { "x": 20, "y": 0 } },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 2
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": { "x": 20, "y": 2 },
+        "accessNodeId": "N_ship",
+        "labels": ["ship"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_slot",
+        "from": "N_home",
+        "to": "N_slot",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_slot_ship",
+        "from": "N_slot",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "demand": {
+    "flows": [
+      {
+        "flowKind": "full_pallet",
+        "intent": "outbound",
+        "quantity": 2,
+        "unit": "pallet",
+        "source": "storage"
+      }
+    ],
+    "initialInventory": [
+      { "locationInstanceId": "SLOT_A", "quantity": 2, "unit": "pallet" }
+    ],
+    "arrivalProfile": { "windowSec": 20 }
+  },
+  "operating": {
+    "resourcePools": [
+      { "id": "pool-forklift", "resourceType": "forklift", "count": 1 }
+    ],
+    "serviceParameters": {
+      "travelSpeedMps": 1,
+      "emptySpeedMps": 1,
+      "processSec": { "pick": 10, "ship": 5 }
+    }
+  },
+  "runControl": {
+    "horizonSec": 600,
+    "seedStreams": { "demand": 7 },
+    "metricDefinitionVersion": "metrics-slice-manual-v1"
+  },
+  "expected": {
+    "mustReject": false,
+    "waitMeanMaxSec": 0,
+    "maxCount": 4,
+    "forkliftCount": 2,
+    "tried": [
+      { "forkliftCount": 1, "waitMeanSec": 12.5, "waitP95Sec": 25 },
+      { "forkliftCount": 2, "waitMeanSec": 0, "waitP95Sec": 0 }
+    ],
+    "handCheck": "空驶 10/1 + 取货 10 + 载货 10/1 + 发运 5 = 35 秒。第二托在第 10 秒到达，一台叉车要到第 35 秒才空出来，等待 25 秒。均值 (0+25)/2 = 12.5，n=2 的 P95 名次 2 = 25。两台时第二托到达另一台空闲，等待 0。目标是均值不超过 0，所以停在 2 台。",
+    "kpiHonesty": "按等待找台数 ≠ 报价，也 ≠ 全仓 KPI 绿"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_plan.py"
+  }
+}

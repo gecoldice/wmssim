@@ -8,6 +8,7 @@ import { EQUIPS, realGlbUrl } from "../src/proxy/equip-index.ts";
 import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
 import { copy } from "../src/copy.ts";
 import { RunCards } from "../src/run-cards/RunCards.tsx";
+import { runReport } from "../src/run-cards/format.js";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
 import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
 import { InspectorPanel } from "../src/inspector/InspectorPanel.tsx";
@@ -361,24 +362,61 @@ const idle = decisionHtml({ run: null, rejected: null, idleNotice: copy.notRun }
 if (!idle.includes('data-decision-cards="hidden"') || idle.includes('class="kpis"') || idle.includes("—") || !idle.includes("未推演")) {
   throw new Error(idle);
 }
+const shownRun = {
+  cards: {
+    throughput: { value: 1 },
+    wait: { meanSec: 2, p95Sec: 3, sampleCount: 1 },
+    utilization: { byResourceType: [{ resourceType: "forklift", utilization: 0.2 }], byResource: [] },
+    bottleneck: { topN: [{ entityId: "e-aisle", waitSec: 2, share: 1 }] },
+  },
+  secondary: { completionRate: 1, completedTasks: 1, incompleteTasks: 0 },
+  layoutRevision: "lr",
+  runManifest: { engineVersion: "slice-des-0.1", seedStreams: { demand: 42 } },
+  kpiFromUiDemo: false,
+};
 const shown = decisionHtml({
   rejected: null,
   idleNotice: null,
-  run: {
-    cards: {
-      throughput: { value: 1 },
-      wait: { meanSec: 2, p95Sec: 3, sampleCount: 1 },
-      utilization: { byResourceType: [{ resourceType: "forklift", utilization: 0.2 }], byResource: [] },
-      bottleneck: { topN: [{ entityId: "e-aisle", waitSec: 2, share: 1 }] },
-    },
-    secondary: { completionRate: 1, completedTasks: 1, incompleteTasks: 0 },
-    layoutRevision: "lr",
-    runManifest: { engineVersion: "slice-des-0.1", seedStreams: { demand: 42 } },
-    kpiFromUiDemo: false,
-  },
+  run: shownRun,
 });
 if (!shown.includes('data-decision-cards="shown"') || !shown.includes('class="kpis"') || !shown.includes("托盘吞吐")) {
   throw new Error("real run hid the four cards");
+}
+function reportTag(html) {
+  const at = html.indexOf('id="runReport"');
+  const start = html.lastIndexOf("<button", at);
+  const end = html.indexOf(">", at);
+  return html.slice(start, end + 1);
+}
+const idleReport = reportTag(idle);
+const shownReport = reportTag(shown);
+if (!idleReport.includes('data-run-report="idle"') || !idleReport.includes("disabled") || idle.includes('class="run-report"')) {
+  throw new Error(idleReport);
+}
+if (!shownReport.includes('data-run-report="ready"') || shownReport.includes("disabled") || shown.includes('class="run-report"')) {
+  throw new Error(shownReport);
+}
+const transcript = runReport(shownRun);
+if (
+  !transcript.includes("不含价格") ||
+  transcript.includes("元") ||
+  transcript.includes("报价") ||
+  transcript.includes("—") ||
+  !transcript.includes("slice-des-0.1") ||
+  !transcript.includes("托盘吞吐 1") ||
+  !transcript.includes("任务等待 2")
+) {
+  throw new Error(transcript);
+}
+const blankWait = runReport({
+  ...shownRun,
+  cards: {
+    ...shownRun.cards,
+    wait: { meanSec: null, p95Sec: null, sampleCount: 0 },
+  },
+});
+if (!blankWait.includes("无完成任务") || blankWait.includes("任务等待 0") || blankWait.includes("—")) {
+  throw new Error(blankWait);
 }
 
 const spanCv = elementFromDrop(draft.elements, "CV-STR-01", 20, 12, { id: "n-acc", x: 20, y: 12 });
@@ -427,6 +465,8 @@ function inspectorHtml(selected, elements) {
         caseQty: "",
         casesPerPallet: "",
         turnRadius: "",
+        waitMeanMax: "",
+        maxForklifts: "",
       },
       onField: () => {},
       onTestValues: () => {},
@@ -532,6 +572,15 @@ const timedAsrs = timed.elements.find((el) => el.typeElementId === "ST-ASRS-01")
 if (timedAsrs?.params.cycle_sec !== 30) throw new Error(`cycle ${timedAsrs && timedAsrs.params.cycle_sec}`);
 if (!straightHtml.includes("转向半径") || !straightHtml.includes("单向，只从起点开往终点")) {
   throw new Error("inspector hid turn radius or one-way");
+}
+if (
+  !straightHtml.includes("按等待找最少叉车") ||
+  !straightHtml.includes("等待均值上限") ||
+  !straightHtml.includes("最多试几台") ||
+  !straightHtml.includes("这是台数对照，不是报价。") ||
+  straightHtml.includes("元")
+) {
+  throw new Error("inspector hid the forklift count search");
 }
 const facility = buildFacility(draft, "facility-mixed", "pending");
 const layout = buildLayout(draft, "layout-mixed", "pending", { id: "facility-mixed", revision: "pending" });

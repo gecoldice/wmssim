@@ -56,6 +56,10 @@ export function startSimulation(body: unknown) {
   return send("POST", "/api/v1/simulation-jobs", body);
 }
 
+export function searchForkliftCount(body: unknown) {
+  return send("POST", "/api/v1/forklift-count-jobs", body);
+}
+
 export function getRun(runId: string) {
   return send("GET", `/api/v1/runs/${runId}`);
 }
