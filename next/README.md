@@ -1,6 +1,6 @@
 # next · 人工摆放切片
 
-综合仓、常温、单层、标准托盘。客户自己摆放，准备布局，再看四张卡。这里没有自动规划、成本对比或识图。
+综合仓、常温、单层、标准托盘。客户自己摆放，准备布局，再看四张卡。叉车台数可以按等待均值搜索。这里没有成本对比或识图。
 
 旧的 `apps/`、`services/`、`shared/` 保持原样。新代码只在本目录。
 
@@ -34,5 +34,6 @@ npm run dev
 - 单向与转向金样：`next/fixtures/gold/G-WAY-01.json`、`G-WAY-02.json`、`G-TURN-01.json`、`G-TURN-02.json`
 - AGV 金样：`next/fixtures/gold/G-AGV-01.json`、`G-AGV-02.json`
 - 立体库金样：`next/fixtures/gold/G-ASRS-01.json`、`G-ASRS-02.json`
+- 叉车台数搜索：`next/fixtures/plan/G-PLAN-01.json`、`G-PLAN-02.json`。只按等待均值找最少台数，不含价格。
 - 输送拓扑金样（仍 `spec_only`）：`next/fixtures/conveyor/G-CV-04.json` 至 `G-CV-07.json`
 - 角色说明：`docs/slice-manual/`
