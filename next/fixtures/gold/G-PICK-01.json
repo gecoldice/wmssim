@@ -1,0 +1,108 @@
+{
+  "fixtureId": "G-PICK-01",
+  "title": "一名拣货人连续拣两箱：空驶、拣选、载货、放下",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "手核后再写入期望数。箱不计入托盘吞吐。本夹具通过 ≠ 综合仓三流验收。",
+  "handCheck": "速度都是 1 m/s。TP1：空驶 10 m + 拣 10 s + 载货 6 m + 放下 5 s = 31 s，等待 0。TP2 在 TP1 结束时才派发：等待 31 s，空驶 6 m + 拣 10 s + 载货 6 m + 放下 5 s = 27 s。拣货人占用 58 s。等待均值 15.5 s。n=2，P95 取第 2 个，31 s。评价 600 s。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_pick_01",
+    "layoutRevision": "pick_rev_g01",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_face", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_pack", "kind": "node", "pose": { "x": 16, "y": 0 } },
+      {
+        "elementId": "SLOT_FACE",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_face",
+        "capacityPallets": 4,
+        "labels": ["pick_face"],
+        "footprint": { "w": 1.2, "d": 1.0 }
+      },
+      {
+        "elementId": "ST_PACK",
+        "kind": "station",
+        "pose": { "x": 16, "y": 2 },
+        "accessNodeId": "N_pack",
+        "labels": ["pack"],
+        "capacitySlots": 1,
+        "footprint": { "w": 2, "d": 1 }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_face",
+        "from": "N_home",
+        "to": "N_face",
+        "lengthM": 10,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_face_pack",
+        "from": "N_face",
+        "to": "N_pack",
+        "lengthM": 6,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      }
+    ],
+    "defaults": { "processSec": { "piece_pick": 10, "ship": 5 } }
+  },
+  "scenario": {
+    "expectedLayoutRevision": "pick_rev_g01",
+    "horizonSec": 600,
+    "seed": 301,
+    "downstreamPiecePick": false,
+    "resources": [
+      {
+        "resourceId": "PK1",
+        "kind": "picker",
+        "homeNodeId": "N_home",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.0
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "TP1",
+        "flowKind": "piece_pick",
+        "qtyCases": 1,
+        "originId": "SLOT_FACE",
+        "destId": "ST_PACK",
+        "readyAt": 0
+      },
+      {
+        "taskId": "TP2",
+        "flowKind": "piece_pick",
+        "qtyCases": 1,
+        "originId": "SLOT_FACE",
+        "destId": "ST_PACK",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SLOT_FACE": { "cases": 2 } }
+  },
+  "expected": {
+    "mustReject": false,
+    "taskStatus": { "TP1": "done", "TP2": "done" },
+    "waitMeanSec": 15.5,
+    "waitP95Sec": 31,
+    "palletEq": 0,
+    "casesShipped": 2,
+    "pickerBusySec": 58,
+    "kpiHonesty": "两箱手核过 ≠ 综合仓三流验收"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

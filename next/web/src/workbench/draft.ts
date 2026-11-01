@@ -66,6 +66,9 @@ export type ScenarioFields = {
   pickSec: string;
   shipSec: string;
   windowSec: string;
+  pieceSec: string;
+  caseQty: string;
+  casesPerPallet: string;
 };
 
 const EVIDENCE = {
@@ -382,6 +385,9 @@ export function emptyScenario(): ScenarioFields {
     pickSec: "",
     shipSec: "",
     windowSec: "",
+    pieceSec: "",
+    caseQty: "",
+    casesPerPallet: "",
   };
 }
 
@@ -400,6 +406,9 @@ export function testScenario(): ScenarioFields {
     pickSec: "10",
     shipSec: "5",
     windowSec: "20",
+    pieceSec: "",
+    caseQty: "",
+    casesPerPallet: "",
   };
 }
 
@@ -411,6 +420,7 @@ export function parseNum(raw: string): number | null {
 
 export function missingScenario(fields: ScenarioFields): string[] {
   const missing: string[] = [];
+  const pieceOnly = fields.piecePick && !fields.fullPallet && !fields.breakBulk;
   const required: Array<[keyof ScenarioFields, string]> = [
     ["outbound", "日出量"],
     ["shiftHours", "班次窗"],
@@ -423,9 +433,18 @@ export function missingScenario(fields: ScenarioFields): string[] {
     ["windowSec", "到达窗口"],
   ];
   for (const [key, label] of required) {
+    if (pieceOnly && (key === "outbound" || key === "forklifts")) continue;
     if (parseNum(String(fields[key])) === null) missing.push(label);
   }
   if (!fields.fullPallet && !fields.breakBulk && !fields.piecePick) missing.push("业务工况");
+  if ((fields.fullPallet || fields.breakBulk) && (parseNum(fields.forklifts) ?? 0) < 1) missing.push("叉车数量");
+  if (fields.piecePick) {
+    if (parseNum(fields.pickers) === 0) missing.push("拣货人数");
+    if ((parseNum(fields.pieceSec) ?? 0) <= 0) missing.push("拣选时间");
+    if (fields.breakBulk) {
+      if ((parseNum(fields.casesPerPallet) ?? 0) <= 0) missing.push("每托箱数");
+    } else if ((parseNum(fields.caseQty) ?? 0) < 1) missing.push("拣选箱数");
+  }
   return missing;
 }
 
@@ -446,18 +465,31 @@ function goods() {
   };
 }
 
-function flow(flowKind: string, intent: string, source: string, quantity: number) {
+const PICK_FACE_TYPES = new Set(["PK-PUT-EACH-01", "PK-EACH-01", "PK-FACE-01", "PK-BIN-FACE-01", "PK-STA-01"]);
+
+function flow(
+  flowKind: string,
+  intent: string,
+  source: string,
+  quantity: number,
+  unit = "pallet",
+  downstream: { mode: string } | null = null,
+) {
   return {
     flowKind,
     intent,
     inputBasis: "explicit_quantity",
     quantity,
-    unit: "pallet",
+    unit,
     source,
-    downstream: null,
+    downstream,
     conversionRef: null,
     parentFlowId: null,
   };
+}
+
+function pickFace(draft: Draft): PoseEl | undefined {
+  return draft.elements.find((el) => PICK_FACE_TYPES.has(el.typeElementId));
 }
 
 export function buildFacility(draft: Draft, id: string, revision: string) {
@@ -593,17 +625,47 @@ export function buildLayout(draft: Draft, id: string, revision: string, facility
 }
 
 export function buildDemand(draft: Draft, fields: ScenarioFields) {
-  const outbound = parseNum(fields.outbound);
+  const pieceOnly = fields.piecePick && !fields.fullPallet && !fields.breakBulk;
+  const outbound = pieceOnly ? 0 : parseNum(fields.outbound);
   const inbound = fields.inbound.trim() === "" ? 0 : parseNum(fields.inbound);
   const windowSec = parseNum(fields.windowSec);
+  const caseQty = parseNum(fields.caseQty);
+  const casesPerPallet = parseNum(fields.casesPerPallet);
   if (outbound === null || windowSec === null || inbound === null) throw new Error("需求未填写完整");
   const flows = [];
   if (fields.fullPallet) flows.push(flow("full_pallet", "outbound", "storage", outbound));
   if (fields.breakBulk) flows.push(flow("break_bulk", "outbound", "storage", outbound));
-  if (fields.piecePick) flows.push(flow("piece_pick", "outbound", "storage", outbound));
+  if (fields.piecePick && fields.breakBulk) {
+    const cases = (casesPerPallet ?? 0) * outbound;
+    flows.push(flow("piece_pick", "outbound", "storage", cases, "case", { mode: "run" }));
+  } else if (fields.piecePick) {
+    if (caseQty === null || caseQty < 1) throw new Error("拣选箱数未填写");
+    flows.push(flow("piece_pick", "outbound", "storage", caseQty, "case", { mode: "run" }));
+  }
   if (fields.fullPallet && inbound > 0) flows.push(flow("full_pallet", "inbound", "external", inbound));
   const rack = draft.elements.find((el) => el.typeElementId === "ST-PAL-01");
   if (outbound > 0 && !rack) throw new Error("出库需要至少一座托盘货架");
+  const face = fields.piecePick && !fields.breakBulk ? pickFace(draft) : undefined;
+  if (fields.piecePick && !fields.breakBulk && !face) throw new Error("小件分拣需要拣选工位");
+  const initialInventory =
+    outbound > 0 && rack
+      ? [
+          {
+            goodsGroupId: "gg-std-pallet",
+            quantity: outbound,
+            unit: "pallet",
+            locationInstanceId: rack.instanceId,
+          },
+        ]
+      : [];
+  if (face && caseQty !== null && caseQty > 0) {
+    initialInventory.push({
+      goodsGroupId: "gg-std-pallet",
+      quantity: caseQty,
+      unit: "case",
+      locationInstanceId: face.instanceId,
+    });
+  }
   return {
     contractVersion: "0.3",
     id: "demand-workbench",
@@ -611,17 +673,7 @@ export function buildDemand(draft: Draft, fields: ScenarioFields) {
     parentRef: null,
     goodsGroups: [goods()],
     inventoryTargets: [{ goodsGroupId: "gg-std-pallet", quantity: Math.max(outbound, 1), unit: "pallet" }],
-    initialInventory:
-      outbound > 0 && rack
-        ? [
-            {
-              goodsGroupId: "gg-std-pallet",
-              quantity: outbound,
-              unit: "pallet",
-              locationInstanceId: rack.instanceId,
-            },
-          ]
-        : [],
+    initialInventory,
     flows,
     arrivalProfile: {
       kind: "uniform",
@@ -636,12 +688,15 @@ export function buildDemand(draft: Draft, fields: ScenarioFields) {
 
 export function buildOperating(fields: ScenarioFields) {
   const horizonH = parseNum(fields.shiftHours);
-  const forklifts = parseNum(fields.forklifts);
+  const pieceOnly = fields.piecePick && !fields.fullPallet && !fields.breakBulk;
+  const forklifts = parseNum(fields.forklifts) ?? (pieceOnly ? 0 : null);
   const pickers = parseNum(fields.pickers);
   const travel = parseNum(fields.travel);
   const emptySpeed = parseNum(fields.emptySpeed);
   const pickSec = parseNum(fields.pickSec);
   const shipSec = parseNum(fields.shipSec);
+  const pieceSec = parseNum(fields.pieceSec);
+  const casesPerPallet = parseNum(fields.casesPerPallet);
   if (
     horizonH === null ||
     forklifts === null ||
@@ -682,7 +737,12 @@ export function buildOperating(fields: ScenarioFields) {
     serviceParameters: {
       travelSpeedMps: travel,
       emptySpeedMps: emptySpeed,
-      processSec: { pick: pickSec, ship: shipSec },
+      processSec: {
+        pick: pickSec,
+        ship: shipSec,
+        ...(pieceSec !== null && pieceSec > 0 ? { piece_pick: pieceSec } : {}),
+      },
+      ...(casesPerPallet !== null && casesPerPallet > 0 ? { casesPerPallet } : {}),
       paramsSource: "workbench-input",
     },
     routingPolicy: { kind: "shortest_path" },

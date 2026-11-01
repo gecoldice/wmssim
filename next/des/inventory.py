@@ -42,11 +42,19 @@ class InventoryLedger:
         self.in_transit = 0.0
         self.converted = 0.0
         self.cases_created = 0.0
+        self.cases_initial = 0.0
+        self.cases_shipped = 0.0
+        self.cases_in_transit = 0.0
         self.cases_on_hand: Dict[str, float] = {}
+        self.cases_reserved: Dict[str, float] = {}
         for row in initial:
             loc = row.get("locationInstanceId")
             qty = float(row.get("quantity") or 0)
-            if qty <= 0:
+            if qty <= 0 or not loc:
+                continue
+            if str(row.get("unit") or "pallet") == "case":
+                self.cases_on_hand[str(loc)] = self.cases_on_hand.get(str(loc), 0.0) + qty
+                self.cases_initial += qty
                 continue
             if loc not in self.on_hand:
                 raise DesError(
@@ -65,6 +73,30 @@ class InventoryLedger:
 
     def available(self, loc: str) -> float:
         return self.on_hand.get(loc, 0.0) - self.reserved.get(loc, 0.0)
+
+    def available_cases(self, loc: str) -> float:
+        return self.cases_on_hand.get(loc, 0.0) - self.cases_reserved.get(loc, 0.0)
+
+    def reserve_cases(self, loc: str, qty: float) -> None:
+        if self.available_cases(loc) + 1e-9 < qty:
+            raise DesError("INPUT_UNCONFIRMED", f"{loc} 可预约箱数不足", {"locationInstanceId": loc})
+        self.cases_reserved[loc] = self.cases_reserved.get(loc, 0.0) + qty
+
+    def release_cases(self, loc: str, qty: float) -> None:
+        self.cases_reserved[loc] = max(0.0, self.cases_reserved.get(loc, 0.0) - qty)
+
+    def remove_cases(self, loc: str, qty: float) -> None:
+        if self.cases_on_hand.get(loc, 0.0) + 1e-9 < qty:
+            raise DesError("INPUT_UNCONFIRMED", f"{loc} 箱库存不足", {"locationInstanceId": loc})
+        self.cases_on_hand[loc] = self.cases_on_hand.get(loc, 0.0) - qty
+        self.cases_reserved[loc] = max(0.0, self.cases_reserved.get(loc, 0.0) - qty)
+        self.cases_in_transit += qty
+
+    def ship_cases(self, qty: float) -> None:
+        if self.cases_in_transit + 1e-9 < qty:
+            raise DesError("COMPUTATION_FAILED", "发出时没有在途的箱", {"qty": qty})
+        self.cases_in_transit -= qty
+        self.cases_shipped += qty
 
     def pick_slot_with_stock(self, qty: float, preferred: str | None = None) -> str | None:
         if preferred and self.available(preferred) + 1e-9 >= qty:
@@ -143,6 +175,9 @@ class InventoryLedger:
             "inTransit": self.in_transit,
             "converted": self.converted,
             "casesCreated": self.cases_created,
+            "casesInitial": self.cases_initial,
+            "casesShipped": self.cases_shipped,
+            "casesInTransit": self.cases_in_transit,
             "casesOnHand": dict(self.cases_on_hand),
             "onHand": dict(self.on_hand),
             "residual": residual,

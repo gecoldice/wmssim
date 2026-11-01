@@ -1,0 +1,123 @@
+{
+  "fixtureId": "G-PICK-02",
+  "title": "拆完一托后，拣货人把两箱走到包装台",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "downstream=run 才走人。true / generate_only 仍只生成骨架。箱不计入托盘吞吐。",
+  "handCheck": "叉车已在货位节点。取货 0 s，载货 10 m / 1 m/s = 10 s，拆托 10 s，t=20 结束，占用 20 s，并在拆托站留下 2 箱。拣货人停在包装节点。每箱：空驶 4 m + 拣 4 s + 载货 4 m + 放下 0 s = 12 s。第二箱等待 12 s。完成任务等待是 0、0、12，均值 4 s。n=3，P95 取第 3 个，12 s。拣货人占用 24 s。评价 200 s。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_pick_02",
+    "layoutRevision": "pick_rev_g02",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_bulk", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_break", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_pick", "kind": "node", "pose": { "x": 14, "y": 0 } },
+      {
+        "elementId": "SLOT_BULK",
+        "kind": "slot",
+        "pose": { "x": 0, "y": 2 },
+        "accessNodeId": "N_bulk",
+        "capacityPallets": 4,
+        "labels": ["bulk"],
+        "footprint": { "w": 1.2, "d": 1.0 }
+      },
+      {
+        "elementId": "ST_BREAK",
+        "kind": "station",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_break",
+        "labels": ["break_bulk"],
+        "capacitySlots": 1,
+        "footprint": { "w": 3, "d": 2 }
+      },
+      {
+        "elementId": "ST_PICK",
+        "kind": "station",
+        "pose": { "x": 14, "y": 2 },
+        "accessNodeId": "N_pick",
+        "labels": ["pack"],
+        "capacitySlots": 1,
+        "footprint": { "w": 2, "d": 1 }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_bulk_break",
+        "from": "N_bulk",
+        "to": "N_break",
+        "lengthM": 10,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_break_pick",
+        "from": "N_break",
+        "to": "N_pick",
+        "lengthM": 4,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      }
+    ],
+    "defaults": { "processSec": { "pick": 0, "ship": 0, "break_bulk": 10, "piece_pick": 4 } }
+  },
+  "scenario": {
+    "expectedLayoutRevision": "pick_rev_g02",
+    "horizonSec": 200,
+    "seed": 302,
+    "casesPerPallet": 2,
+    "downstreamPiecePick": "run",
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_bulk",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.0
+      },
+      {
+        "resourceId": "PK1",
+        "kind": "picker",
+        "homeNodeId": "N_pick",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.0
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "TB1",
+        "flowKind": "break_bulk",
+        "qtyPallets": 1,
+        "originId": "SLOT_BULK",
+        "destId": "ST_BREAK",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SLOT_BULK": { "pallets": 1 } }
+  },
+  "expected": {
+    "mustReject": false,
+    "taskStatus": {
+      "TB1": "done",
+      "TB1-piece-01": "done",
+      "TB1-piece-02": "done"
+    },
+    "waitMeanSec": 4,
+    "waitP95Sec": 12,
+    "palletEq": 0,
+    "casesShipped": 2,
+    "pickerBusySec": 24,
+    "forkliftBusySec": 20,
+    "kpiHonesty": "拆托后两箱手核过 ≠ 综合仓三流验收"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "d1AllFlows": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

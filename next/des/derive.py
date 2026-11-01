@@ -285,6 +285,10 @@ def derive_snapshot(
         if kind == "station" and tid == "PK-DEPAL-01":
             out["labels"] = ["break_bulk"]
             out["capacitySlots"] = 1
+        if kind == "station" and tid in {"PK-PUT-EACH-01", "PK-EACH-01", "PK-FACE-01", "PK-BIN-FACE-01", "PK-STA-01"}:
+            out["labels"] = ["piece_pick"]
+        if kind == "station" and tid == "OUT-PACK-01":
+            out["labels"] = ["pack"]
         if params:
             out["params"] = dict(params)
         if isinstance(params.get("ports"), list):
