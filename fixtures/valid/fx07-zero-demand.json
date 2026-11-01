@@ -1,0 +1,58 @@
+{
+  "contractVersion": "0.3",
+  "id": "demand-fx07-zero",
+  "revision": "d-zero-1",
+  "parentRef": null,
+  "goodsGroups": [
+    {
+      "id": "gg-std-pallet",
+      "loadUnit": "pallet",
+      "dimensionsM": { "length": 1.2, "width": 1.0, "height": 1.5 },
+      "grossWeightKg": 800,
+      "stackability": "stackable",
+      "allowedStorageTypes": ["ST-PAL-01"],
+      "quantityUnit": "pallet",
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-07",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T01:00:00+08:00"
+      }
+    }
+  ],
+  "inventoryTargets": [
+    { "goodsGroupId": "gg-std-pallet", "quantity": 0, "unit": "pallet" }
+  ],
+  "initialInventory": [
+    {
+      "goodsGroupId": "gg-std-pallet",
+      "quantity": 0,
+      "unit": "pallet",
+      "locationInstanceId": null
+    }
+  ],
+  "flows": [
+    {
+      "flowKind": "full_pallet",
+      "inputBasis": "explicit_quantity",
+      "quantity": 0,
+      "unit": "pallet",
+      "source": "external",
+      "downstream": null,
+      "conversionRef": null,
+      "parentFlowId": null
+    }
+  ],
+  "arrivalProfile": {
+    "kind": "uniform",
+    "windowSec": 28800,
+    "unit": "pallet",
+    "paramsSource": "demo-fixture-zero"
+  },
+  "serviceTargets": [],
+  "assumptions": [
+    "零需求边界夹具；引擎不得除零伪造 100% 完成或零等待",
+    "KPI 断言待 M3，本文件仅结构合法"
+  ],
+  "totalDemand": null
+}

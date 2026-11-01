@@ -1,0 +1,69 @@
+{
+  "contractVersion": "0.3",
+  "id": "facility-fx01",
+  "revision": "f-r1",
+  "parentRef": null,
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m"
+  },
+  "boundary": {
+    "outer": [
+      { "x": 0, "y": 0 },
+      { "x": 40, "y": 0 },
+      { "x": 40, "y": 24 },
+      { "x": 0, "y": 24 },
+      { "x": 0, "y": 0 }
+    ]
+  },
+  "obstacles": [],
+  "openings": [
+    {
+      "id": "door-recv",
+      "segment": [
+        { "x": 0, "y": 10 },
+        { "x": 0, "y": 14 }
+      ],
+      "widthM": 4,
+      "heightM": 4.5,
+      "role": "recv",
+      "approachPolygon": null,
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-01",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T01:00:00+08:00"
+      }
+    },
+    {
+      "id": "door-ship",
+      "segment": [
+        { "x": 40, "y": 10 },
+        { "x": 40, "y": 14 }
+      ],
+      "widthM": 4,
+      "heightM": 4.5,
+      "role": "ship",
+      "approachPolygon": null,
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-01",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T01:00:00+08:00"
+      }
+    }
+  ],
+  "reservedAreas": [],
+  "heightProfile": {
+    "kind": "uniform",
+    "heightM": 10
+  },
+  "evidence": {
+    "sourceKind": "demo",
+    "sourceRef": "FX-01",
+    "confirmationStatus": "confirmed",
+    "updatedAt": "2026-10-29T01:00:00+08:00"
+  }
+}

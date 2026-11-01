@@ -1,0 +1,66 @@
+{
+  "contractVersion": "0.3",
+  "id": "demand-fx01",
+  "revision": "d-r1",
+  "parentRef": null,
+  "goodsGroups": [
+    {
+      "id": "gg-std-pallet",
+      "loadUnit": "pallet",
+      "dimensionsM": { "length": 1.2, "width": 1.0, "height": 1.5 },
+      "grossWeightKg": 800,
+      "stackability": "stackable",
+      "allowedStorageTypes": ["ST-PAL-01", "ST-FLOOR-01"],
+      "quantityUnit": "pallet",
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-01",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T01:00:00+08:00"
+      }
+    }
+  ],
+  "inventoryTargets": [
+    { "goodsGroupId": "gg-std-pallet", "quantity": 48, "unit": "pallet" }
+  ],
+  "initialInventory": [
+    {
+      "goodsGroupId": "gg-std-pallet",
+      "quantity": 24,
+      "unit": "pallet",
+      "locationInstanceId": "rack-001"
+    }
+  ],
+  "flows": [
+    {
+      "flowKind": "full_pallet",
+      "inputBasis": "explicit_quantity",
+      "quantity": 24,
+      "unit": "pallet",
+      "source": "external",
+      "downstream": null,
+      "conversionRef": null,
+      "parentFlowId": null
+    }
+  ],
+  "arrivalProfile": {
+    "kind": "uniform",
+    "windowSec": 28800,
+    "unit": "pallet",
+    "paramsSource": "demo-fixture"
+  },
+  "serviceTargets": [
+    {
+      "metricId": "outbound_completion_rate",
+      "operator": ">=",
+      "givenValue": 0.95,
+      "unit": "ratio",
+      "scope": "shift"
+    }
+  ],
+  "assumptions": [
+    "合成演示需求，非客户数据",
+    "KPI 金样期望未锁定"
+  ],
+  "totalDemand": null
+}

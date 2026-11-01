@@ -1,0 +1,51 @@
+{
+  "contractVersion": "0.3",
+  "id": "facility-fx01-wall",
+  "revision": "f-wall-1",
+  "parentRef": null,
+  "coord": {
+    "origin": "facility_sw_corner",
+    "xAxis": "east",
+    "yAxis": "north",
+    "unit": "m"
+  },
+  "boundary": {
+    "outer": [
+      { "x": 0, "y": 0 },
+      { "x": 40, "y": 0 },
+      { "x": 40, "y": 24 },
+      { "x": 0, "y": 24 },
+      { "x": 0, "y": 0 }
+    ]
+  },
+  "obstacles": [
+    {
+      "id": "wall-mid",
+      "polygon": {
+        "outer": [
+          { "x": 18, "y": 0 },
+          { "x": 20, "y": 0 },
+          { "x": 20, "y": 24 },
+          { "x": 18, "y": 24 },
+          { "x": 18, "y": 0 }
+        ]
+      },
+      "heightM": 10,
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-02",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T02:00:00+08:00"
+      }
+    }
+  ],
+  "openings": [],
+  "reservedAreas": [],
+  "heightProfile": { "kind": "uniform", "heightM": 10 },
+  "evidence": {
+    "sourceKind": "demo",
+    "sourceRef": "FX-02",
+    "confirmationStatus": "confirmed",
+    "updatedAt": "2026-10-29T02:00:00+08:00"
+  }
+}

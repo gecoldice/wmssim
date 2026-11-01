@@ -1,0 +1,118 @@
+{
+  "fixtureId": "G-BREAK-03",
+  "title": "D3：场景含 break_bulk 但布局无 break_bulk 站 → 拒绝加载",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "工程实测通过（next/scripts/run_gold.py）。仅本夹具。拆托金样过 ≠ 综合仓三流 D1 全过。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_break_03",
+    "layoutRevision": "break_rev_g03",
+    "coord": {
+      "origin": "SW",
+      "unit": "m"
+    },
+    "elements": [
+      {
+        "elementId": "N_bulk",
+        "kind": "node",
+        "pose": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "N_ship",
+        "kind": "node",
+        "pose": {
+          "x": 20,
+          "y": 0
+        }
+      },
+      {
+        "elementId": "SLOT_BULK",
+        "kind": "slot",
+        "pose": {
+          "x": 0,
+          "y": 2
+        },
+        "accessNodeId": "N_bulk",
+        "capacityPallets": 4,
+        "footprint": {
+          "w": 1.2,
+          "d": 1.0
+        }
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": {
+          "x": 20,
+          "y": 2
+        },
+        "accessNodeId": "N_ship",
+        "labels": [
+          "ship"
+        ],
+        "footprint": {
+          "w": 3,
+          "d": 2
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_bulk_ship",
+        "from": "N_bulk",
+        "to": "N_ship",
+        "lengthM": 20,
+        "bidirectional": true,
+        "maxConcurrent": 1,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "scenario": {
+    "expectedLayoutRevision": "break_rev_g03",
+    "horizonSec": 600,
+    "seed": 203,
+    "casesPerPallet": 24,
+    "resources": [
+      {
+        "resourceId": "FL1",
+        "kind": "forklift",
+        "homeNodeId": "N_bulk",
+        "travelSpeedMps": 1.0,
+        "emptySpeedMps": 1.2
+      }
+    ],
+    "tasks": [
+      {
+        "taskId": "TB1",
+        "flowKind": "break_bulk",
+        "qtyPallets": 1,
+        "originId": "SLOT_BULK",
+        "destId": "DOCK_SHIP",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": {
+      "SLOT_BULK": {
+        "pallets": 1
+      }
+    }
+  },
+  "expected": {
+    "mustReject": true,
+    "rejectReasonCode": "FLOWKIND_STATION_MISSING",
+    "assert": "场景引用 break_bulk 但无 labels 含 break_bulk 的 station → 拒绝加载，不进入调度",
+    "kpiHonesty": "拒载用例；无 KPI"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "d1AllFlows": false,
+    "runner": "next/scripts/run_gold.py"
+  }
+}

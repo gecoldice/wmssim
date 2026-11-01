@@ -1,0 +1,70 @@
+{
+  "contractVersion": "0.3",
+  "id": "pb-fx-m4",
+  "revision": "pb-r1",
+  "parentRef": null,
+  "currency": "CNY",
+  "demoOnly": true,
+  "items": [
+    {
+      "skuKey": "ST-PAL-01",
+      "unitPrice": 12000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-catalog",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": "标准托盘货架段"
+    },
+    {
+      "skuKey": "IN-DOCK-01",
+      "unitPrice": 8000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-catalog",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": null
+    },
+    {
+      "skuKey": "OUT-DOCK-01",
+      "unitPrice": 8000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-catalog",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": null
+    },
+    {
+      "skuKey": "resource:forklift",
+      "unitPrice": 50000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-opex",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": "年租当量（demo）"
+    },
+    {
+      "skuKey": "resource:operator",
+      "unitPrice": 80000,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-opex",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": "年人力（demo）"
+    },
+    {
+      "skuKey": "relocate:ST-PAL-01",
+      "unitPrice": 1500,
+      "unit": "ea",
+      "status": "available",
+      "source": "demo-move",
+      "asOf": "2026-10-01",
+      "taxInclusive": true,
+      "specNote": "货架搬移"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "contractVersion": "0.3",
+  "id": "op-fx01",
+  "revision": "o-r1",
+  "parentRef": null,
+  "resourcePools": [
+    {
+      "id": "pool-forklift",
+      "resourceType": "forklift",
+      "count": 2,
+      "capabilityRef": "cap-forklift-std",
+      "availableWindowSec": 28800,
+      "homeInstanceIds": ["device-fork-home"]
+    }
+  ],
+  "serviceParameters": {
+    "travelSpeedMps": 1.2,
+    "emptySpeedMps": 1.5,
+    "processSec": { "full_pallet": 90 }
+  },
+  "routingPolicy": { "kind": "shortest_path" },
+  "shiftWindow": { "startSec": 0, "endSec": 28800 }
+}

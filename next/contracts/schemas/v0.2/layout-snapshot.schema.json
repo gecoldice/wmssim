@@ -1,0 +1,165 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://warehouse-sim.local/schemas/layout-snapshot-v0.2.json",
+  "title": "Layout Snapshot schema v0.2",
+  "description": "推演只读布局快照。schemaVersion 固定 0.2。坐标系：西南角原点，X 东 Y 北，单位米；3D 映射 (X,Y,Z)=(x,高度,-y) 由编辑器/渲染层执行。elementId=布局实例；typeElementId=元素库正式类型 ID。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "layoutId", "layoutRevision", "coord", "elements", "edges"],
+  "properties": {
+    "schemaVersion": {
+      "const": "0.2",
+      "description": "固定字符串 0.2；不匹配拒绝加载"
+    },
+    "layoutId": { "type": "string", "minLength": 1 },
+    "layoutRevision": {
+      "type": "string",
+      "minLength": 1,
+      "description": "不透明修订串；仅字符串相等比较"
+    },
+    "exportedAt": { "type": "string", "format": "date-time" },
+    "networkId": { "type": "string" },
+    "siteId": { "type": "string" },
+    "coord": { "$ref": "#/$defs/Coord" },
+    "elements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Element" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Edge" }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "travelSpeedMps": { "type": "number", "exclusiveMinimum": 0 },
+        "emptySpeedMps": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "description": "编辑器门禁证据；引擎仍独立校验",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "Coord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["origin", "xAxis", "yAxis", "unit"],
+      "properties": {
+        "origin": {
+          "type": "string",
+          "const": "facility_sw_corner",
+          "description": "仓房西南角"
+        },
+        "xAxis": { "const": "east" },
+        "yAxis": { "const": "north" },
+        "unit": { "const": "m" },
+        "yawZero": {
+          "type": "string",
+          "const": "+X",
+          "description": "yawDeg 相对 +X 逆时针"
+        }
+      }
+    },
+    "Pose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "description": "米，东向" },
+        "y": { "type": "number", "description": "米，北向" },
+        "yawDeg": { "type": "number", "description": "相对 +X 逆时针度；缺省 0" },
+        "zM": { "type": "number", "description": "可选高度米；3D Y" }
+      }
+    },
+    "Footprint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["w", "d"],
+          "properties": {
+            "w": { "type": "number", "exclusiveMinimum": 0 },
+            "d": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["polygon"],
+          "properties": {
+            "polygon": {
+              "type": "array",
+              "minItems": 3,
+              "items": {
+                "type": "object",
+                "required": ["x", "y"],
+                "additionalProperties": false,
+                "properties": {
+                  "x": { "type": "number" },
+                  "y": { "type": "number" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Element": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["elementId", "kind", "pose", "footprint"],
+      "properties": {
+        "elementId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "布局实例 ID，布局内唯一"
+        },
+        "typeElementId": {
+          "type": "string",
+          "pattern": "^[A-Z]+(-[A-Z]+)+-[0-9]{2}$",
+          "description": "元素库正式类型 ID；新导出实体必填"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["slot", "station", "node", "dock", "device"]
+        },
+        "pose": { "$ref": "#/$defs/Pose" },
+        "footprint": { "$ref": "#/$defs/Footprint" },
+        "labels": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "accessNodeId": {
+          "type": "string",
+          "description": "slot/station/dock/device 强制；须指向 kind=node 且可达"
+        },
+        "capacityPallets": { "type": "number", "minimum": 1 },
+        "capacitySlots": { "type": "number", "minimum": 1 },
+        "zone": { "type": "string" },
+        "resourceHome": { "type": "boolean" },
+        "processSec": {
+          "type": "object",
+          "additionalProperties": { "type": "number", "minimum": 0 }
+        }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edgeId", "from", "to", "lengthM", "bidirectional"],
+      "properties": {
+        "edgeId": { "type": "string", "minLength": 1 },
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "lengthM": { "type": "number", "exclusiveMinimum": 0 },
+        "bidirectional": { "type": "boolean" },
+        "maxConcurrent": { "type": "integer", "minimum": 1 },
+        "speedFactor": { "type": "number", "exclusiveMinimum": 0, "default": 1 }
+      }
+    }
+  }
+}

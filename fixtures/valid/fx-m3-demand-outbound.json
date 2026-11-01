@@ -1,0 +1,67 @@
+{
+  "contractVersion": "0.3",
+  "id": "demand-fx-m3",
+  "revision": "d-m3-1",
+  "parentRef": null,
+  "goodsGroups": [
+    {
+      "id": "gg-std-pallet",
+      "loadUnit": "pallet",
+      "dimensionsM": { "length": 1.2, "width": 1.0, "height": 1.5 },
+      "grossWeightKg": 800,
+      "stackability": "stackable",
+      "allowedStorageTypes": ["ST-PAL-01"],
+      "quantityUnit": "pallet",
+      "evidence": {
+        "sourceKind": "demo",
+        "sourceRef": "FX-M3",
+        "confirmationStatus": "confirmed",
+        "updatedAt": "2026-10-29T02:00:00+08:00"
+      }
+    }
+  ],
+  "inventoryTargets": [
+    { "goodsGroupId": "gg-std-pallet", "quantity": 8, "unit": "pallet" }
+  ],
+  "initialInventory": [
+    {
+      "goodsGroupId": "gg-std-pallet",
+      "quantity": 4,
+      "unit": "pallet",
+      "locationInstanceId": "rack-001"
+    }
+  ],
+  "flows": [
+    {
+      "flowKind": "full_pallet",
+      "intent": "outbound",
+      "inputBasis": "explicit_quantity",
+      "quantity": 4,
+      "unit": "pallet",
+      "source": "storage",
+      "downstream": null,
+      "conversionRef": null,
+      "parentFlowId": null
+    }
+  ],
+  "arrivalProfile": {
+    "kind": "uniform",
+    "windowSec": 600,
+    "unit": "pallet",
+    "paramsSource": "fx-m3-fixed"
+  },
+  "serviceTargets": [
+    {
+      "metricId": "outbound_completion_rate",
+      "operator": ">=",
+      "givenValue": 1.0,
+      "unit": "ratio",
+      "scope": "shift"
+    }
+  ],
+  "assumptions": [
+    "M3 固定整数出库金样：初始 4 托全部发运",
+    "KPI 由引擎事件核对，非 UI 演示公式"
+  ],
+  "totalDemand": { "quantity": 4, "unit": "pallet" }
+}

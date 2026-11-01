@@ -1,0 +1,341 @@
+{
+  "contractVersion": "0.3",
+  "id": "layout-mixed-wh-v0",
+  "revision": "pending",
+  "facilityRef": {
+    "id": "facility-mixed",
+    "revision": "mx-fac-eb"
+  },
+  "parentRef": null,
+  "elements": [
+    {
+      "instanceId": "dock-in",
+      "typeElementId": "IN-DOCK-01",
+      "pose": {
+        "x": 4,
+        "y": 12,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 3,
+        "width_m": 4,
+        "height_m": 1.2,
+        "orientation_deg": 0,
+        "footprintW": 3,
+        "footprintD": 4,
+        "accessNodeId": "n-acc-400-1200",
+        "accessPoint": {
+          "x": 4,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "dock-out",
+      "typeElementId": "OUT-DOCK-01",
+      "pose": {
+        "x": 36,
+        "y": 12,
+        "yawDeg": 180
+      },
+      "params": {
+        "length_m": 3,
+        "width_m": 4,
+        "height_m": 1.2,
+        "orientation_deg": 180,
+        "footprintW": 3,
+        "footprintD": 4,
+        "accessNodeId": "n-acc-3600-1200",
+        "accessPoint": {
+          "x": 36,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "rack-001",
+      "typeElementId": "ST-PAL-01",
+      "pose": {
+        "x": 10,
+        "y": 16,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 2.7,
+        "width_m": 1.2,
+        "height_m": 6,
+        "orientation_deg": 0,
+        "footprintW": 2.7,
+        "footprintD": 1.2,
+        "accessNodeId": "n-acc-1000-1200",
+        "accessPoint": {
+          "x": 10,
+          "y": 12
+        },
+        "bays": 1,
+        "levels": 4,
+        "palletsPerBay": 2,
+        "minClearWidthM": 3,
+        "geometry": {
+          "bay_w_m": 2.7,
+          "bay_d_m": 1.2,
+          "levels": 4,
+          "level_height_m": 1.5,
+          "bays": 1,
+          "aisle_w_m": 3,
+          "orientation_deg": 0
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "rack-002",
+      "typeElementId": "ST-PAL-01",
+      "pose": {
+        "x": 16,
+        "y": 16,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 2.7,
+        "width_m": 1.2,
+        "height_m": 6,
+        "orientation_deg": 0,
+        "footprintW": 2.7,
+        "footprintD": 1.2,
+        "accessNodeId": "n-acc-1600-1200",
+        "accessPoint": {
+          "x": 16,
+          "y": 12
+        },
+        "bays": 1,
+        "levels": 4,
+        "palletsPerBay": 2,
+        "minClearWidthM": 3,
+        "geometry": {
+          "bay_w_m": 2.7,
+          "bay_d_m": 1.2,
+          "levels": 4,
+          "level_height_m": 1.5,
+          "bays": 1,
+          "aisle_w_m": 3,
+          "orientation_deg": 0
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "floor-001",
+      "typeElementId": "ST-FLOOR-01",
+      "pose": {
+        "x": 26,
+        "y": 16.4,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 4.8,
+        "width_m": 2.4,
+        "height_m": 1.5,
+        "orientation_deg": 0,
+        "footprintW": 4.8,
+        "footprintD": 2.4,
+        "accessNodeId": "n-acc-2600-1200",
+        "accessPoint": {
+          "x": 26,
+          "y": 12
+        },
+        "levels": 1,
+        "bays": 1,
+        "palletsPerBay": 4,
+        "geometry": {
+          "length_m": 4.8,
+          "width_m": 2.4,
+          "max_stack_h_m": 1.5,
+          "orientation_deg": 0
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "depal-001",
+      "typeElementId": "PK-DEPAL-01",
+      "pose": {
+        "x": 9,
+        "y": 7.6,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 3.2,
+        "width_m": 2,
+        "height_m": 1.6,
+        "orientation_deg": 0,
+        "footprintW": 3.2,
+        "footprintD": 2,
+        "accessNodeId": "n-acc-900-1200",
+        "accessPoint": {
+          "x": 9,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "put-001",
+      "typeElementId": "PK-PUT-EACH-01",
+      "pose": {
+        "x": 18,
+        "y": 7.8,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 4.2,
+        "width_m": 1,
+        "height_m": 2.2,
+        "orientation_deg": 0,
+        "footprintW": 4.2,
+        "footprintD": 1,
+        "accessNodeId": "n-acc-1800-1200",
+        "accessPoint": {
+          "x": 18,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "pack-001",
+      "typeElementId": "OUT-PACK-01",
+      "pose": {
+        "x": 26,
+        "y": 7.6,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 2.4,
+        "width_m": 1.4,
+        "height_m": 1.1,
+        "orientation_deg": 0,
+        "footprintW": 2.4,
+        "footprintD": 1.4,
+        "accessNodeId": "n-acc-2600-1200",
+        "accessPoint": {
+          "x": 26,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "hand-001",
+      "typeElementId": "MH-HAND-01",
+      "pose": {
+        "x": 14,
+        "y": 14.35,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 6,
+        "width_m": 1.2,
+        "height_m": 0.2,
+        "orientation_deg": 0,
+        "footprintW": 6,
+        "footprintD": 1.2,
+        "accessNodeId": "n-acc-1400-1200",
+        "accessPoint": {
+          "x": 14,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "fork-001",
+      "typeElementId": "MH-FORK-01",
+      "pose": {
+        "x": 33.2,
+        "y": 7.4,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 4,
+        "width_m": 2.2,
+        "height_m": 0.25,
+        "orientation_deg": 0,
+        "footprintW": 4,
+        "footprintD": 2.2,
+        "accessNodeId": "n-acc-3320-1200",
+        "accessPoint": {
+          "x": 33.2,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "fire-001",
+      "typeElementId": "AUX-FIRE-01",
+      "pose": {
+        "x": 33,
+        "y": 4.6,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 8,
+        "width_m": 1.5,
+        "height_m": 0.15,
+        "orientation_deg": 0,
+        "footprintW": 8,
+        "footprintD": 1.5,
+        "accessNodeId": "n-acc-3300-1200",
+        "accessPoint": {
+          "x": 33,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "wall-001",
+      "typeElementId": "AUX-WALL-01",
+      "pose": {
+        "x": 20,
+        "y": 19.5,
+        "yawDeg": 0
+      },
+      "params": {
+        "length_m": 22,
+        "width_m": 0.3,
+        "height_m": 3.2,
+        "orientation_deg": 0,
+        "footprintW": 22,
+        "footprintD": 0.3,
+        "accessNodeId": "n-acc-2000-1200",
+        "accessPoint": {
+          "x": 20,
+          "y": 12
+        }
+      },
+      "assetDisposition": "new"
+    }
+  ],
+  "aisles": [
+    {
+      "id": "aisle-main",
+      "centerline": [
+        {
+          "x": 2,
+          "y": 12
+        },
+        {
+          "x": 38,
+          "y": 12
+        }
+      ],
+      "widthM": 3.5
+    }
+  ],
+  "locks": [],
+  "catalogVersion": "catalog-slice-manual"
+}

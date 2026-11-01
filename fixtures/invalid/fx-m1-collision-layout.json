@@ -1,0 +1,42 @@
+{
+  "contractVersion": "0.3",
+  "id": "layout-collision",
+  "revision": "ld-col-1",
+  "facilityRef": { "id": "facility-fx01", "revision": "f-r1" },
+  "parentRef": null,
+  "elements": [
+    {
+      "instanceId": "rack-a",
+      "typeElementId": "ST-PAL-01",
+      "pose": { "x": 12, "y": 14, "yawDeg": 0 },
+      "params": { "levels": 4, "bays": 1, "minClearWidthM": 3.0 },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "rack-b",
+      "typeElementId": "ST-PAL-01",
+      "pose": { "x": 12.4, "y": 14.1, "yawDeg": 0 },
+      "params": { "levels": 4, "bays": 1, "minClearWidthM": 3.0 },
+      "assetDisposition": "new"
+    },
+    {
+      "instanceId": "dock-recv",
+      "typeElementId": "IN-DOCK-01",
+      "pose": { "x": 1, "y": 12, "yawDeg": 0 },
+      "params": {},
+      "assetDisposition": "new"
+    }
+  ],
+  "aisles": [
+    {
+      "id": "aisle-main",
+      "centerline": [
+        { "x": 2, "y": 12 },
+        { "x": 20, "y": 12 }
+      ],
+      "widthM": 3.5
+    }
+  ],
+  "locks": [],
+  "catalogVersion": "catalog-mvp@c-r1"
+}

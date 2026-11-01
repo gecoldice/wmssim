@@ -1,0 +1,12 @@
+{
+  "contractVersion": "0.3",
+  "scenarioId": "scenario-fx-m3",
+  "demandRef": { "id": "demand-fx-m3", "revision": "d-m3-1" },
+  "operatingRef": { "id": "op-fx-m3", "revision": "o-m3-1" },
+  "runControl": {
+    "horizonSec": 3600,
+    "seedStreams": { "demand": 42, "dispatch": 42 },
+    "demandSampleRef": null,
+    "metricDefinitionVersion": "metrics-m3-v1"
+  }
+}

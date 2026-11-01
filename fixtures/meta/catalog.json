@@ -1,0 +1,293 @@
+{
+  "fixtureCatalogVersion": "0.2",
+  "notes": [
+    "合成数字仅用于契约/结构测试，不进入客户项目默认值。",
+    "金样 KPI 待 DES 引擎实现后独立核对；本目录不含猜测 KPI 期望值。",
+    "正例 expect=pass；反例 expect=fail 并声明失败原因类别。",
+    "M1 派生/碰撞/窄通道/跨墙语义见 scripts/run_m1_checks.py（prepareExpect）。",
+    "M2 规划/锁定/采用语义见 scripts/run_m2_checks.py。",
+    "M3 DES/四卡/回放见 scripts/run_m3_checks.py；KPI 由事件核对，非 UI 演示公式。",
+    "M4 BOM/成本/比较见 scripts/run_m4_checks.py；缺价不排最低成本；缺轴不补零。",
+    "M5 识图/NSGA-II/长期成本见 scripts/run_m5_checks.py；每项为失败或不支持，不宣称未实现能力。",
+    "break_bulk / piece_pick 见 scripts/run_m3_checks.py。拆托中间产出不计外部吞吐。"
+  ],
+  "entries": [
+    {
+      "id": "FX-01",
+      "path": "valid/fx01-small-rect-facility.json",
+      "kind": "facilityRevision",
+      "schema": "v0.3/facility-revision.schema.json",
+      "expect": "pass",
+      "purpose": "可解析小矩形场地"
+    },
+    {
+      "id": "FX-01-SNAP",
+      "path": "valid/fx01-layout-snapshot.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "pass",
+      "purpose": "小矩形仓连通通道图与 accessNode"
+    },
+    {
+      "id": "FX-01-EQUIP",
+      "path": "valid/fx01-equip-st-pal-01.json",
+      "kind": "equip",
+      "schema": "v0.2/equip.schema.json",
+      "expect": "pass",
+      "purpose": "正式类型 ID ST-PAL-01 盒子代理"
+    },
+    {
+      "id": "FX-01-DEMAND",
+      "path": "valid/fx01-demand-revision.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "单一货物组与明确单位"
+    },
+    {
+      "id": "FX-01-PLAN",
+      "path": "valid/fx01-planning-request.json",
+      "kind": "planningRequest",
+      "schema": "v0.3/planning-request.schema.json",
+      "expect": "pass",
+      "purpose": "PlanningRequest 形状"
+    },
+    {
+      "id": "FX-01-OP",
+      "path": "valid/fx01-operating-profile.json",
+      "kind": "operatingProfileRevision",
+      "schema": "v0.3/operating-profile-revision.schema.json",
+      "expect": "pass",
+      "purpose": "资源池与班次窗"
+    },
+    {
+      "id": "FX-01-SCENARIO-03",
+      "path": "valid/fx01-scenario-package-v03.json",
+      "kind": "scenarioPackage",
+      "schema": "v0.3/scenario-package.schema.json",
+      "expect": "pass",
+      "purpose": "外层 ScenarioPackage 0.3"
+    },
+    {
+      "id": "FX-01-LAYOUT-DOC",
+      "path": "valid/fx01-layout-document.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "purpose": "LayoutDocumentRevision 编辑器真相"
+    },
+    {
+      "id": "FX-01-PROJECT",
+      "path": "valid/fx01-project.json",
+      "kind": "project",
+      "schema": "v0.3/project.schema.json",
+      "expect": "pass",
+      "purpose": "Project 米制"
+    },
+    {
+      "id": "FX-02-NEG",
+      "path": "invalid/fx02-missing-access-node.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "semantic_fail",
+      "purpose": "货位缺 accessNodeId（schema 可通过，语义校验应拒绝）",
+      "reasonCode": "NO_ACCESS_NODE"
+    },
+    {
+      "id": "FX-BAD-VERSION",
+      "path": "invalid/bad-snapshot-version.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "fail",
+      "purpose": "schemaVersion 非 0.2",
+      "reasonCode": "SCHEMA_VERSION"
+    },
+    {
+      "id": "FX-BAD-EQUIP-ALIAS",
+      "path": "invalid/bad-equip-short-alias.json",
+      "kind": "equip",
+      "schema": "v0.2/equip.schema.json",
+      "expect": "fail",
+      "purpose": "历史短名 st_pal_std 禁止",
+      "reasonCode": "ELEMENT_ID"
+    },
+    {
+      "id": "FX-BAD-CONTRACT",
+      "path": "invalid/bad-planning-contract-version.json",
+      "kind": "planningRequest",
+      "schema": "v0.3/planning-request.schema.json",
+      "expect": "fail",
+      "purpose": "外层 contractVersion 非 0.3",
+      "reasonCode": "CONTRACT_VERSION"
+    },
+    {
+      "id": "FX-07-ZERO",
+      "path": "valid/fx07-zero-demand.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "零需求边界；KPI 期望未锁定，仅结构合法"
+    },
+    {
+      "id": "FX-M1-OK",
+      "path": "valid/fx-m1-ok-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "ready",
+      "purpose": "手动路径正例：可派生并可推演准备"
+    },
+    {
+      "id": "FX-M1-WALL-FACILITY",
+      "path": "valid/fx01-facility-with-wall.json",
+      "kind": "facilityRevision",
+      "schema": "v0.3/facility-revision.schema.json",
+      "expect": "pass",
+      "purpose": "中间隔墙场地（跨墙夹具）"
+    },
+    {
+      "id": "FX-M1-COLLISION",
+      "path": "invalid/fx-m1-collision-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "GEOMETRY_INVALID",
+      "purpose": "两货架占地碰撞"
+    },
+    {
+      "id": "FX-M1-NARROW",
+      "path": "invalid/fx-m1-narrow-aisle-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "NARROW_AISLE",
+      "purpose": "通道窄于设备声明 minClearWidthM"
+    },
+    {
+      "id": "FX-M1-CROSS-WALL",
+      "path": "invalid/fx-m1-cross-wall-layout.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "NO_ACCESS_NODE",
+      "purpose": "隔墙切断；跨墙 access 绑定应失败"
+    },
+    {
+      "id": "FX-M1-CROSS-WALL-SNAP",
+      "path": "invalid/fx-m1-cross-wall-snapshot.json",
+      "kind": "layoutSnapshot",
+      "schema": "v0.2/layout-snapshot.schema.json",
+      "expect": "pass",
+      "prepareExpect": "fail",
+      "reasonCode": "NO_ACCESS_NODE",
+      "purpose": "强制跨墙 accessNode 的 snapshot；权威校验拒绝"
+    },
+    {
+      "id": "FX-M2-PENDING",
+      "path": "invalid/fx-m2-unconfirmed-facility.json",
+      "kind": "facilityRevision",
+      "schema": "v0.3/facility-revision.schema.json",
+      "expect": "pass",
+      "purpose": "未确认场地；不得产出 validated 规划候选（门禁 INPUT_UNCONFIRMED）"
+    },
+    {
+      "id": "FX-M2-LOCKED-BASE",
+      "path": "valid/fx-m2-base-layout-locked.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "purpose": "局部重排底稿：锁定 dock + 区域外货架"
+    },
+    {
+      "id": "FX-M3-DEMAND",
+      "path": "valid/fx-m3-demand-outbound.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "M3 固定整数出库：初始 4 托全部发运"
+    },
+    {
+      "id": "FX-M3-OP",
+      "path": "valid/fx-m3-operating.json",
+      "kind": "operatingProfileRevision",
+      "schema": "v0.3/operating-profile-revision.schema.json",
+      "expect": "pass",
+      "purpose": "M3 运行编制；含 faultInject/skillTags 占位"
+    },
+    {
+      "id": "FX-M3-SCENARIO",
+      "path": "valid/fx-m3-scenario-package.json",
+      "kind": "scenarioPackage",
+      "schema": "v0.3/scenario-package.schema.json",
+      "expect": "pass",
+      "purpose": "M3 ScenarioPackage；metricDefinitionVersion=metrics-m3-v1"
+    },
+    {
+      "id": "FX-M4-PB-OK",
+      "path": "valid/fx-m4-price-book-complete.json",
+      "kind": "priceBook",
+      "schema": "v0.3/price-book.schema.json",
+      "expect": "pass",
+      "purpose": "完整价目（demo）；可参与最低成本排序"
+    },
+    {
+      "id": "FX-M4-PB-MISS",
+      "path": "valid/fx-m4-price-book-missing.json",
+      "kind": "priceBook",
+      "schema": "v0.3/price-book.schema.json",
+      "expect": "pass",
+      "purpose": "FX-10：货架缺价；不得排最低成本"
+    },
+    {
+      "id": "FX-M4-CB",
+      "path": "valid/fx-m4-cost-basis.json",
+      "kind": "costBasis",
+      "schema": "v0.3/cost-basis.schema.json",
+      "expect": "pass",
+      "purpose": "费用边界：安装/搬移分列"
+    },
+    {
+      "id": "FX-M4-SP",
+      "path": "valid/fx-m4-score-profile.json",
+      "kind": "scoreProfile",
+      "schema": "v0.3/score-profile.schema.json",
+      "expect": "pass",
+      "purpose": "M4 三轴锚点锁定（storage/efficiency/investment）"
+    },
+    {
+      "id": "FX-M4-REUSE",
+      "path": "valid/fx-m4-layout-reuse.json",
+      "kind": "layoutDocumentRevision",
+      "schema": "v0.3/layout-document-revision.schema.json",
+      "expect": "pass",
+      "purpose": "复用货架：新购=0，搬移分列"
+    },
+    {
+      "id": "FX-M4-OP-EXTRA",
+      "path": "valid/fx-m4-operating-extra-labor.json",
+      "kind": "operatingProfileRevision",
+      "schema": "v0.3/operating-profile-revision.schema.json",
+      "expect": "pass",
+      "purpose": "whole_solution：加人；layout_only 应判不可比"
+    },
+    {
+      "id": "FX-OPS-BREAK",
+      "path": "valid/fx-ops-demand-break-bulk.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "拆托 2 托，casesPerPallet=4，下游发运由引擎生成"
+    },
+    {
+      "id": "FX-OPS-PIECE",
+      "path": "valid/fx-ops-demand-piece-pick.json",
+      "kind": "demandRevision",
+      "schema": "v0.3/demand-revision.schema.json",
+      "expect": "pass",
+      "purpose": "独立件拣 4 箱，外部发运托盘当量为 1"
+    }
+  ]
+}

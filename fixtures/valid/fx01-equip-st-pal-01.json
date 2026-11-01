@@ -1,0 +1,53 @@
+{
+  "schema_version": "0.2",
+  "element_id": "ST-PAL-01",
+  "element_type": "PalletRack",
+  "display_name": "标准托盘货架",
+  "glb": "",
+  "lod": {
+    "lod1": "proxy:box"
+  },
+  "footprint": {
+    "kind": "aabb",
+    "clearance_h_m": 0.1,
+    "aabb": {
+      "length_m": 2.7,
+      "width_m": 1.2
+    }
+  },
+  "colliders": [],
+  "ports": [
+    {
+      "id": "face_access",
+      "role": "bidirectional",
+      "x_m": 0,
+      "y_m": 0,
+      "z_m": 0.6,
+      "normal_deg": 0,
+      "family": "pallet"
+    }
+  ],
+  "connector_ids": ["face_access"],
+  "params": {
+    "geometry": {
+      "bay_w_m": 2.7,
+      "bay_d_m": 1.1,
+      "levels": 4,
+      "level_height_m": 1.5,
+      "bays": 1,
+      "aisle_w_m": 3.0,
+      "orientation_deg": 0
+    },
+    "capability": {
+      "pallets_per_bay": 2
+    }
+  },
+  "visual": {
+    "proxy": "box"
+  },
+  "meta": {
+    "element_library_id": "ST-PAL-01",
+    "notes": "FX-01 demo box proxy; not a production GLB claim",
+    "proxy": true
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "fixtureId": "MX-D1-CV",
+  "title": "mixed_wh + ≥1 段 CV-STR 旁路/收货后直线（草案）",
+  "templateId": "template.mixed_wh_v0",
+  "schemaVersion": "0.2",
+  "status": "spec_only",
+  "note": "云端主线接编码。≠ 替代 MX-D1-EB pass；≠ UA S-D1。仅要求直线已接时可跑且四卡有限数。",
+  "prerequisite": {
+    "miniGold": ["G-CV-01", "G-CV-02", "G-CV-03"],
+    "related": ["MX-D1-EB"],
+    "pmNote": "MX-D1-EB 工程已合入 m5；本夹具另测输送挂入"
+  },
+  "scenario": {
+    "scenarioId": "mixed_wh_d1_cv_v0",
+    "expectedLayoutRevision": "<export_from_mixed_wh_v0_with_cv_str>",
+    "horizonSec": 28800,
+    "seed": 42,
+    "inboundRatePalletsPerHour": 12,
+    "outboundPalletEqPerShift": 48,
+    "flowMix": { "full_pallet": 0.5, "break_bulk": 0.3, "piece_pick": 0.2 },
+    "casesPerPallet": 24,
+    "piecePickRuntime": "generate_only",
+    "resources": { "forklift": 3, "picker": 4 },
+    "edgeOccupancy": { "enabled": true, "defaultMaxConcurrent": 1 },
+    "conveyorRuntime": {
+      "enabled": true,
+      "acceptedElementIds": ["CV-STR-01", "CV-ROL-01", "CV-BELT-01"],
+      "rejectIfRequired": ["CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01", "CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01"]
+    }
+  },
+  "layoutRequirements": {
+    "minStraightConveyorSegments": 1,
+    "straightElementIds": ["CV-STR-01", "CV-ROL-01", "CV-BELT-01"],
+    "portsConnected": true,
+    "slotsNeedAccessNodeId": true,
+    "noUnsupportedOnCriticalPath": true
+  },
+  "expected": {
+    "mustReject": false,
+    "runCompletes": true,
+    "conservationOk": true,
+    "kpiCards": {
+      "present": ["throughput_pallet_eq_per_h", "wait_mean_sec", "utilization", "bottleneck_top1"],
+      "assert": "四卡有限数非 NaN；瓶颈 TopN 候选可含 CV instanceId；不强制业务接量"
+    },
+    "trajectory": { "segmentsNonEmpty": true },
+    "kpiHonesty": "MX-D1-CV 通 ≠ MX-D1-EB 替代；≠ UA S-D1；≠ 弯道合流已接"
+  }
+}
