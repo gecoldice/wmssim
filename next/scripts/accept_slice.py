@@ -30,7 +30,7 @@ from des.engine import ENGINE_VERSION, run_des  # noqa: E402
 from des.errors import DesError  # noqa: E402
 from des.gold import run_suite  # noqa: E402
 from des.mxeval import run_suite as run_mx_suite  # noqa: E402
-from des.scope import unsimulated_message  # noqa: E402
+from des.scope import is_unsimulated, unsimulated_message  # noqa: E402
 from des.validate import validate_layout  # noqa: E402
 
 FX = ROOT / "next" / "fixtures" / "manual-wh"
@@ -466,7 +466,8 @@ def main() -> int:
         "unconnected belt does not invent KPI",
     )
     check(runs_cv == runs_after and "即将" not in message, "unsimulated call stored no run")
-    check(unsimulated_message(["MH-AGV-01"]).startswith("本切片暂不仿真该类"), "scope message")
+    check(unsimulated_message(["MH-CRANE-01"]).startswith("本切片暂不仿真该类"), "scope message")
+    check(is_unsimulated("MH-AGV-01") is False, "AGV is not an unsimulated type")
 
     web = (ROOT / "next" / "web" / "src").read_text() if False else ""
     blob = "\n".join(path.read_text(encoding="utf-8") for path in (ROOT / "next" / "web" / "src").rglob("*") if path.suffix in {".ts", ".tsx", ".js", ".css"})
@@ -555,7 +556,7 @@ def main() -> int:
     print("AC-17 转向和单向: 金样 G-TURN-01/02 与 G-WAY-01/02。跨墙和窄通道仍由 S-03/S-04 覆盖。这不是 AC-17 全部验收。")
 
     print("\n=== G-EDGE / G-BREAK fixtures ===")
-    check(run_suite() == 0, "G-EDGE, G-BREAK, G-PICK, G-TURN, and G-WAY")
+    check(run_suite() == 0, "G-EDGE, G-BREAK, G-PICK, G-TURN, G-WAY, and G-AGV")
 
     print("\n=== MX mixed-warehouse edge occupancy + break_bulk ===")
     print("spec_only stays spec_only; assert pass is not UA S-D1 and not a mini-gold substitute")

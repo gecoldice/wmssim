@@ -16,4 +16,4 @@
 
 **已接**：`CV-STR-01` · `CV-ROL-01` · `CV-BELT-01` · `CV-CURVE-01` · `CV-MERGE-01` · `CV-DIV-01` · `CV-BUF-01`  
 **仍拒跑**：`CV-VERT-01` · `CV-CHUTE-01` · `CV-LOOP-01` · `CV-INDUCT-EACH-01`  
-**外延**：AGV · ASRS · CV-INDUCT
+**外延**：ASRS · CV-INDUCT。AGV 沿通道走，不在输送段里。

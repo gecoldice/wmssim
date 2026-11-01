@@ -146,6 +146,9 @@ export function InspectorPanel({
               {selected.typeElementId.startsWith("CV-") ? (
                 <ConveyorFields draft={draft} selected={selected} onElement={onElement} />
               ) : null}
+              {selected.typeElementId === "MH-AGV-01" ? (
+                <p className="inspector-empty">只有工况里填写了 AGV 数量，推演才会带上这种车。整托任务仍走叉车。数量留空时，这个图标只是摆在图上。</p>
+              ) : null}
               <div className="field">
                 <label>接入点</label>
                 <div className="input-row">
@@ -224,6 +227,14 @@ export function InspectorPanel({
             <NumberField label="叉车数量" unit="台" value={fields.forklifts} placeholder={copy.missing} onChange={(value) => onField({ forklifts: value })} />
             <NumberField label="拣货人数" unit="人" value={fields.pickers} placeholder={copy.missing} onChange={(value) => onField({ pickers: value })} />
           </div>
+          <NumberField
+            label="AGV 数量"
+            unit="台"
+            value={fields.agvCount}
+            placeholder="留空不带车"
+            onChange={(value) => onField({ agvCount: value })}
+          />
+          <p className="inspector-empty">留空不带车。整托任务仍由叉车走，填了数量也不会自动改派给 AGV。</p>
           <div className="two-fields">
             <NumberField label="空驶速度" unit="m/s" value={fields.emptySpeed} placeholder={copy.missing} onChange={(value) => onField({ emptySpeed: value })} />
             <NumberField label="载货速度" unit="m/s" value={fields.travel} placeholder={copy.missing} onChange={(value) => onField({ travel: value })} />

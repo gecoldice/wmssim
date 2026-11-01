@@ -3,6 +3,7 @@
 Assert pass does not change fixture status. These files stay spec_only.
 That is not UA S-D1 and not a substitute for MX-D1-EB.
 Curve, merge, divert and buffer have a runtime. Vertical, chute, loop and induct still refuse.
+A task that depends on an AGV with no vehicle refuses before the scheduler.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ REJECT_TYPES = (
     "CV-CHUTE-01",
     "CV-LOOP-01",
     "CV-INDUCT-EACH-01",
-    "MH-AGV-01",
     "MH-CRANE-01",
     "ST-ASRS-01",
 )
@@ -265,12 +265,10 @@ def evaluate_g03(base: Dict[str, Any]) -> List[str]:
     attempt("R4_merge_one_inlet", insert_type("CV-MERGE-01"), "合流至少要两个入口", "INPUT_UNCONFIRMED")
     attempt("R4_div_one_outlet", insert_type("CV-DIV-01"), "分流至少要两个出口", "INPUT_UNCONFIRMED")
     attempt("R4_buf_missing_slots", insert_type("CV-BUF-01"), "缓冲位数未填写", "INPUT_UNCONFIRMED")
-    attempt("R5_agv_required", agv, "MH-AGV-01", "UNSUPPORTED_SCENARIO")
+    attempt("R5_agv_required", agv, "至少需要 1 台 AGV", "NO_RESOURCES")
     attempt("R6_revision_mismatch", revision, "layoutRevision", "LAYOUT_REVISION_MISMATCH")
     attempt("R7_allow_load_mismatch", load_type, "CV-STR-01", "UNSUPPORTED_SCENARIO")
     for type_id in REJECT_TYPES:
-        if type_id == "MH-AGV-01":
-            continue
         attempt(f"extra_{type_id}", insert_type(type_id), type_id, "UNSUPPORTED_SCENARIO")
 
     curve = deepcopy(base)

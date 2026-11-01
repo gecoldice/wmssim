@@ -74,6 +74,7 @@ export type ScenarioFields = {
   shiftHours: string;
   forklifts: string;
   pickers: string;
+  agvCount: string;
   travel: string;
   emptySpeed: string;
   pickSec: string;
@@ -419,6 +420,7 @@ export function emptyScenario(): ScenarioFields {
     shiftHours: "",
     forklifts: "",
     pickers: "",
+    agvCount: "",
     travel: "",
     emptySpeed: "",
     pickSec: "",
@@ -441,6 +443,7 @@ export function testScenario(): ScenarioFields {
     shiftHours: "1",
     forklifts: "1",
     pickers: "0",
+    agvCount: "",
     travel: "1.2",
     emptySpeed: "1.5",
     pickSec: "10",
@@ -750,6 +753,7 @@ export function buildOperating(fields: ScenarioFields) {
   const pieceSec = parseNum(fields.pieceSec);
   const casesPerPallet = parseNum(fields.casesPerPallet);
   const turnRadius = parseNum(fields.turnRadius);
+  const agvCount = parseNum(fields.agvCount);
   if (
     horizonH === null ||
     forklifts === null ||
@@ -777,6 +781,16 @@ export function buildOperating(fields: ScenarioFields) {
       resourceType: "picker",
       count: pickers,
       capabilityRef: "cap-picker-workbench",
+      availableWindowSec: horizonH * 3600,
+      homeInstanceIds: [],
+    });
+  }
+  if (agvCount !== null && agvCount > 0) {
+    pools.push({
+      id: "pool-agv",
+      resourceType: "agv",
+      count: agvCount,
+      capabilityRef: "cap-agv-workbench",
       availableWindowSec: horizonH * 3600,
       homeInstanceIds: [],
     });

@@ -1,7 +1,8 @@
 """Types this manual slice will place but will not pretend to simulate.
 
 Straight, curve, merge, divert and buffer conveyors have a runtime.
-Vertical, chute, loop, induct, plus AGV / ASRS / crane, still refuse.
+Vertical, chute, loop, induct, plus ASRS / crane, still refuse.
+MH-AGV-01 can travel the aisle when the scenario includes an AGV.
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ _LINEAR = {"CV-STR-01", "CV-ROL-01", "CV-BELT-01"}
 _ROUTED = _LINEAR | {"CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01"}
 
 _EXACT = {
-    "MH-AGV-01",
     "MH-CHG-01",
     "MH-WAIT-01",
     "MH-CRANE-01",

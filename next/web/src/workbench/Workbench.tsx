@@ -550,7 +550,8 @@ export function Workbench() {
         raw.includes("分流至少要两个出口") ||
         raw.includes("缓冲位数未填写") ||
         raw.includes("单向通道走不通") ||
-        raw.includes("转不过这个弯");
+        raw.includes("转不过这个弯") ||
+        raw.includes("至少需要 1 台 AGV");
       setRun(null);
       setRejected(human ? raw : `${copy.simFail} ${raw}`);
       setMode("decision");
