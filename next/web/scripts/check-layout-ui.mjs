@@ -8,11 +8,11 @@ import { EQUIPS, realGlbUrl } from "../src/proxy/equip-index.ts";
 import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
 import { copy } from "../src/copy.ts";
 import { RunCards } from "../src/run-cards/RunCards.tsx";
-import { cardDeltaText, pinCards, runReport, unitAmount } from "../src/run-cards/format.js";
+import { amountCompareText, cardDeltaText, pinCards, runReport, sheetAmount, unitAmount } from "../src/run-cards/format.js";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
 import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
 import { InspectorPanel } from "../src/inspector/InspectorPanel.tsx";
-import { MIXED_TEMPLATE_ID, aisleOf, asBox, buildFacility, buildLayout, buildOperating, columnsFor, conveyorLinks, conveyorRefusal, draftFor, elementFromDrop, linearEndsLinked, snapConveyorEnds, testScenario, verdictFor } from "../src/workbench/draft.ts";
+import { MIXED_TEMPLATE_ID, aisleOf, asBox, buildFacility, buildLayout, buildOperating, columnsFor, conveyorLinks, conveyorRefusal, draftFor, elementFromDrop, linearEndsLinked, scenarioKey, snapConveyorEnds, testScenario, verdictFor } from "../src/workbench/draft.ts";
 
 const placeable = catalog.filter((item) => item.placeable);
 if (placeable.length !== 78) throw new Error(`expected 78 placeable, got ${placeable.length}`);
@@ -464,6 +464,36 @@ if (!compared.includes('id="cardDelta"') || !compared.includes("两次布局修�
   throw new Error(compared);
 }
 if (runReport(shownRun).includes("200") || runReport(shownRun).includes("元")) throw new Error("report picked up a price");
+if (scenarioKey(testScenario()) !== scenarioKey({ ...testScenario(), forkliftPrice: "100", pickerPrice: "50", agvPrice: "80" })) {
+  throw new Error("typed prices marked the four cards stale");
+}
+const withPeople = {
+  ...pinnedOnce,
+  forkliftCount: 1,
+  pickerCount: 2,
+  prices: { forklift: 100, picker: null, agv: null },
+};
+const incompleteSheet = sheetAmount(withPeople);
+if (incompleteSheet.ok || incompleteSheet.text.includes("合计 ") || !incompleteSheet.text.includes("拣货人 2 人，单价未填写")) {
+  throw new Error(incompleteSheet.text);
+}
+const negativeSheet = sheetAmount({ ...withPeople, prices: { forklift: 100, picker: -1, agv: null } });
+if (negativeSheet.ok || !negativeSheet.text.includes("单价不能为负") || negativeSheet.text.includes("合计 ")) throw new Error(negativeSheet.text);
+const fullA = { ...withPeople, prices: { forklift: 100, picker: 50, agv: null } };
+const fullB = { ...fullA, prices: { forklift: 100, picker: 10, agv: null } };
+if (sheetAmount(fullA).total !== 200 || sheetAmount(fullB).total !== 120) throw new Error("sheet totals drifted");
+const money = amountCompareText(fullA, fullB);
+if (!money.includes("上次合计 200") || !money.includes("这次合计 120") || !money.includes("上次手填合计更高") || !money.includes("只比较这两次都填全的金额")) {
+  throw new Error(money);
+}
+if (amountCompareText(withPeople, fullB) !== "有单价没填，不比哪一次更省。") throw new Error(amountCompareText(withPeople, fullB));
+const crewDiff = cardDeltaText({ ...pinnedOnce, forkliftCount: 1 }, { ...laterPin, forkliftCount: 2 });
+if (!crewDiff.includes("叉车台数不同，吞吐和等待的差不能全部算到布局上。")) throw new Error(crewDiff);
+const efficiency = cardDeltaText({ ...pinnedOnce, throughput: 4, waitMeanSec: 2 }, { ...laterPin, throughput: 4, waitMeanSec: 1 });
+if (!efficiency.includes("吞吐相同，等待不同，这不是同样的效率。")) throw new Error(efficiency);
+const missingUtil = cardDeltaText(pinnedOnce, { ...laterPin, utilization: [] });
+if (!missingUtil.includes("不把缺的写成 0") || missingUtil.includes("利用率 forklift 相差")) throw new Error(missingUtil);
+if (idle.includes('id="amountCompare"') || shown.includes('id="amountCompare"')) throw new Error("unpinned page ranked a price");
 
 const spanCv = elementFromDrop(draft.elements, "CV-STR-01", 20, 12, { id: "n-acc", x: 20, y: 12 });
 if (spanCv.speedMpm !== 30) throw new Error(`straight default speed ${spanCv.speedMpm}`);
@@ -514,6 +544,8 @@ function inspectorHtml(selected, elements, extra = {}) {
         waitMeanMax: "",
         maxForklifts: "",
         forkliftPrice: "",
+        pickerPrice: "",
+        agvPrice: "",
         ...(extra.fields || {}),
       },
       crew: extra.crew || null,
@@ -628,7 +660,9 @@ if (
   !straightHtml.includes("最多试几台") ||
   !straightHtml.includes("这是台数对照，不是报价。") ||
   !straightHtml.includes("叉车单价") ||
+  !straightHtml.includes("拣货人单价") ||
   !straightHtml.includes("留空不算金额") ||
+  !straightHtml.includes("不算合计") ||
   straightHtml.includes("台 ×")
 ) {
   throw new Error("inspector hid the forklift count search");

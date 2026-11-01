@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { copy } from "../copy";
-import { cardDeltaText, formatP95, formatRate, formatThroughput, formatWait, pinCards, runReport, unitAmount } from "./format.js";
+import { amountCompareText, cardDeltaText, formatP95, formatRate, formatThroughput, formatWait, pinCards, runReport, sheetAmount } from "./format.js";
 
 type CardPin = {
   layoutRevision: string;
@@ -8,7 +8,12 @@ type CardPin = {
   waitMeanSec: number | null;
   waitP95Sec: number | null;
   forkliftCount: number | null;
+  pickerCount?: number | null;
+  agvCount?: number | null;
+  utilization?: Array<{ resourceType: string; utilization: number | null }>;
   bottleneckId: string;
+  bottleneckWaitSec?: number | null;
+  prices?: { forklift: number | null; picker: number | null; agv: number | null };
 };
 
 type UtilRow = { resourceType?: string; resourceId?: string; utilization?: number | null; resourceCount?: number };
@@ -30,6 +35,8 @@ type Props = {
   pinned?: CardPin | null;
   onPin?: () => void;
   unitPrice?: number | null;
+  pickerPrice?: number | null;
+  agvPrice?: number | null;
   children: ReactNode;
 };
 
@@ -49,6 +56,8 @@ export function RunCards({
   pinned,
   onPin,
   unitPrice,
+  pickerPrice,
+  agvPrice,
   children,
 }: Props) {
   const cards = (run?.cards ?? null) as Record<string, unknown> | null;
@@ -67,10 +76,10 @@ export function RunCards({
   const banner = rejected || (showCards ? null : idleNotice || copy.notRun);
   const bannerClass = rejected || (banner && banner.startsWith(copy.unsimulated)) ? "rejected" : "decision-idle";
   const [report, setReport] = useState("");
-  const currentPin = run && showCards ? pinCards(run) : null;
-  const forkliftCount = currentPin?.forkliftCount ?? null;
-  const amount = showCards && forkliftCount !== null ? unitAmount(forkliftCount, unitPrice ?? null) : null;
+  const currentPin = run && showCards ? pinCards(run, { forklift: unitPrice ?? null, picker: pickerPrice ?? null, agv: agvPrice ?? null }) : null;
+  const sheet = currentPin ? sheetAmount(currentPin) : null;
   const delta = showCards && pinned && currentPin ? cardDeltaText(pinned, currentPin) : "";
+  const money = showCards && pinned && currentPin ? amountCompareText(pinned, currentPin) : "";
   function onReport() {
     if (!run || !showCards) return;
     const text = runReport(run);
@@ -123,10 +132,19 @@ export function RunCards({
           {report}
         </pre>
       ) : null}
-      {amount?.ok ? <p id="runUnitAmount">{amount.text}</p> : null}
+      {sheet?.text ? (
+        <pre className="card-delta" id="runUnitAmount">
+          {sheet.text}
+        </pre>
+      ) : null}
       {delta ? (
         <pre className="card-delta" id="cardDelta">
           {delta}
+        </pre>
+      ) : null}
+      {money ? (
+        <pre className="card-delta" id="amountCompare">
+          {money}
         </pre>
       ) : null}
       {showCards ? <div className="kpis">

@@ -594,13 +594,13 @@ def main() -> int:
         "AC-16",
         "AC-18",
         "AC-21",
-        "AC-19 改价格",
         "AC-20 历史布局回放绑定（决策页会插值本次 trajectory.segments，不把该动画当成 AC-20 已验收）",
         "AC-22 断网",
         "易用性 5 人小样",
     ):
         print(f"{ac}: 未执行")
     print("AC-17 转向和单向: 金样 G-TURN-01/02 与 G-WAY-01/02。跨墙和窄通道仍由 S-03/S-04 覆盖。这不是 AC-17 全部验收。")
+    print("AC-19 改价格: 手填单价不把四卡标成过期，金额按当前填写重算；记下的一组仍用记下时的单价。改需求过期仍由 S-10 覆盖。这不是旧成本估算过期的全部验收。")
 
     print("\n=== G-EDGE / G-BREAK fixtures ===")
     check(run_suite() == 0, "G-EDGE, G-BREAK, G-PICK, G-TURN, G-WAY, G-AGV, and G-ASRS")

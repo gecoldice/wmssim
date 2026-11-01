@@ -23,7 +23,7 @@
 | GET | `/runs/{id}` | 清单、四卡、事件、轨迹、`layoutRevision` |
 | GET | `/health` | 存活探测。`planning` 为 false |
 
-没有采用、价目接口、识图。工作台只把这次手填的叉车单价乘上台数，并把两次运行的四卡相减。健康检查里的 `planning` 仍是 false。
+没有采用、价目接口、识图，也不自动生成布局。工作台把这次手填的叉车、拣货人、AGV 单价乘上这次运行的数量；有数量却没填单价时不算合计，也不参加「哪一次更省」。两次运行的四卡相减，缺的一侧不补 0。健康检查里的 `planning` 仍是 false。
 
 `full_pallet` 与 `break_bulk` 可以推演。单独的 `piece_pick` 让作业失败（`UNSUPPORTED_SCENARIO`），不写入 run。拆托下游的小件只生成箱任务。四卡形状以 `schemas/slice/run-result.schema.json` 为准：利用率只有 `byResourceType` 与 `byResource`，没有无类型的 `value`。`kpiFromUiDemo` 固定为 false。没有成功的本次运行时，决策页不渲染主四卡。
 
