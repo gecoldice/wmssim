@@ -8,7 +8,7 @@ import { EQUIPS, realGlbUrl } from "../src/proxy/equip-index.ts";
 import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
 import { copy } from "../src/copy.ts";
 import { RunCards } from "../src/run-cards/RunCards.tsx";
-import { runReport } from "../src/run-cards/format.js";
+import { cardDeltaText, pinCards, runReport, unitAmount } from "../src/run-cards/format.js";
 import { actorsAt, segmentBounds } from "../src/run-cards/playback.ts";
 import { applyNormFix, auditNorms, normNote, normSummary } from "../src/prepare/norms.ts";
 import { InspectorPanel } from "../src/inspector/InspectorPanel.tsx";
@@ -418,6 +418,52 @@ const blankWait = runReport({
 if (!blankWait.includes("无完成任务") || blankWait.includes("任务等待 0") || blankWait.includes("—")) {
   throw new Error(blankWait);
 }
+if (unitAmount(2, "").text !== "叉车单价未填写" || unitAmount(2, -1).text !== "单价不能为负" || unitAmount(2, -1).ok) {
+  throw new Error(JSON.stringify(unitAmount(2, -1)));
+}
+if (unitAmount(2, 100).text !== "2 台 × 100 = 200。单价来自这次填写。" || unitAmount(2, 100).amount !== 200) {
+  throw new Error(unitAmount(2, 100).text);
+}
+const pinnedOnce = pinCards(shownRun);
+const sameDelta = cardDeltaText(pinnedOnce, pinnedOnce);
+if (!sameDelta.includes("两次是同一布局修订。") || sameDelta.includes("—")) throw new Error(sameDelta);
+const laterPin = {
+  ...pinnedOnce,
+  layoutRevision: "lr-b",
+  throughput: 4,
+  waitMeanSec: 1,
+};
+const movedDelta = cardDeltaText(pinnedOnce, laterPin);
+if (!movedDelta.includes("两次布局修订不同。") || !movedDelta.includes("吞吐相差 +3") || !movedDelta.includes("等待相差 -1")) {
+  throw new Error(movedDelta);
+}
+const missingDelta = cardDeltaText(pinnedOnce, { ...laterPin, throughput: null, waitMeanSec: null });
+if (!missingDelta.includes("没有吞吐数字") || !missingDelta.includes("无完成任务") || missingDelta.includes("等待相差 0") || missingDelta.includes("—")) {
+  throw new Error(missingDelta);
+}
+if (idle.includes('id="cardDelta"') || idle.includes('id="runUnitAmount"') || shown.includes('id="cardDelta"')) {
+  throw new Error("idle or unpinned run showed a delta");
+}
+const compared = decisionHtml({
+  rejected: null,
+  idleNotice: null,
+  unitPrice: 100,
+  pinned: pinnedOnce,
+  run: {
+    ...shownRun,
+    layoutRevision: "lr-b",
+    cards: {
+      ...shownRun.cards,
+      throughput: { value: 4 },
+      wait: { meanSec: 1, p95Sec: 1, sampleCount: 1 },
+      utilization: { byResourceType: [{ resourceType: "forklift", utilization: 0.2, resourceCount: 1 }], byResource: [] },
+    },
+  },
+});
+if (!compared.includes('id="cardDelta"') || !compared.includes("两次布局修订不同。") || !compared.includes("1 台 × 100 = 100")) {
+  throw new Error(compared);
+}
+if (runReport(shownRun).includes("200") || runReport(shownRun).includes("元")) throw new Error("report picked up a price");
 
 const spanCv = elementFromDrop(draft.elements, "CV-STR-01", 20, 12, { id: "n-acc", x: 20, y: 12 });
 if (spanCv.speedMpm !== 30) throw new Error(`straight default speed ${spanCv.speedMpm}`);
@@ -439,7 +485,7 @@ const savedCv = saved.elements.find((el) => el.typeElementId === "CV-STR-01");
 if (!savedCv || savedCv.params.speed_mpm !== 30 || !savedCv.params.conveyorLinks?.length) {
   throw new Error(`layout did not keep speed_mpm and links ${JSON.stringify(savedCv && savedCv.params)}`);
 }
-function inspectorHtml(selected, elements) {
+function inspectorHtml(selected, elements, extra = {}) {
   return renderToStaticMarkup(
     createElement(InspectorPanel, {
       draft: { ...draft, elements },
@@ -467,7 +513,10 @@ function inspectorHtml(selected, elements) {
         turnRadius: "",
         waitMeanMax: "",
         maxForklifts: "",
+        forkliftPrice: "",
+        ...(extra.fields || {}),
       },
+      crew: extra.crew || null,
       onField: () => {},
       onTestValues: () => {},
       testValues: false,
@@ -578,10 +627,17 @@ if (
   !straightHtml.includes("等待均值上限") ||
   !straightHtml.includes("最多试几台") ||
   !straightHtml.includes("这是台数对照，不是报价。") ||
-  straightHtml.includes("元")
+  !straightHtml.includes("叉车单价") ||
+  !straightHtml.includes("留空不算金额") ||
+  straightHtml.includes("台 ×")
 ) {
   throw new Error("inspector hid the forklift count search");
 }
+const pricedCrew = { forkliftCount: 2, waitMeanMaxSec: 0, tried: [{ forkliftCount: 2, waitMeanSec: 0, waitP95Sec: 0 }] };
+const pricedHtml = inspectorHtml(placedCv, [...draft.elements, placedCv], { fields: { forkliftPrice: "100" }, crew: pricedCrew });
+if (!pricedHtml.includes("2 台 × 100 = 200。单价来自这次填写。")) throw new Error(pricedHtml);
+const negativeHtml = inspectorHtml(placedCv, [...draft.elements, placedCv], { fields: { forkliftPrice: "-1" }, crew: pricedCrew });
+if (!negativeHtml.includes("单价不能为负") || negativeHtml.includes("台 ×")) throw new Error(negativeHtml);
 const facility = buildFacility(draft, "facility-mixed", "pending");
 const layout = buildLayout(draft, "layout-mixed", "pending", { id: "facility-mixed", revision: "pending" });
 writeFileSync("/tmp/mixed-slice-facility.json", JSON.stringify(facility));

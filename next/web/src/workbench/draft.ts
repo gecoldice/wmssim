@@ -88,6 +88,8 @@ export type ScenarioFields = {
   turnRadius: string;
   waitMeanMax: string;
   maxForklifts: string;
+  /** Operator-typed unit price. Empty means no amount. Not sent to the engine. */
+  forkliftPrice: string;
 };
 
 const EVIDENCE = {
@@ -436,6 +438,7 @@ export function emptyScenario(): ScenarioFields {
     turnRadius: "",
     waitMeanMax: "",
     maxForklifts: "",
+    forkliftPrice: "",
   };
 }
 
@@ -461,6 +464,7 @@ export function testScenario(): ScenarioFields {
     turnRadius: "",
     waitMeanMax: "",
     maxForklifts: "",
+    forkliftPrice: "",
   };
 }
 
@@ -501,7 +505,7 @@ export function missingScenario(fields: ScenarioFields): string[] {
 }
 
 export function scenarioKey(fields: ScenarioFields): string {
-  return JSON.stringify(fields);
+  return JSON.stringify({ ...fields, forkliftPrice: undefined });
 }
 
 function goods() {

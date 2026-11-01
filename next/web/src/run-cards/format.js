@@ -69,3 +69,69 @@ export function runReport(run) {
   ];
   return lines.join("\n");
 }
+
+/** count × a price the operator typed. Blank and negative prices do not become zero. */
+export function unitAmount(count, unitPrice) {
+  if (typeof count !== "number" || !Number.isFinite(count)) return { ok: false, text: "台数还没有" };
+  if (unitPrice === null || unitPrice === undefined || unitPrice === "") return { ok: false, text: "叉车单价未填写" };
+  const price = typeof unitPrice === "number" ? unitPrice : Number(unitPrice);
+  if (!Number.isFinite(price)) return { ok: false, text: "叉车单价未填写" };
+  if (price < 0) return { ok: false, text: "单价不能为负" };
+  const amount = count * price;
+  return {
+    ok: true,
+    amount,
+    text: `${formatNumber(count)} 台 × ${formatNumber(price)} = ${formatNumber(amount)}。单价来自这次填写。`,
+  };
+}
+
+function cardNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function signed(value) {
+  const text = formatNumber(value);
+  return value > 0 ? `+${text}` : text;
+}
+
+/** Four numbers copied off one run. Missing waits stay null. */
+export function pinCards(run) {
+  if (!run || run.kpiFromUiDemo !== false || !run.cards) return null;
+  const cards = run.cards;
+  const wait = cards.wait || {};
+  const throughput = cards.throughput || {};
+  const fork = ((cards.utilization || {}).byResourceType || []).find((row) => row.resourceType === "forklift");
+  const top = ((cards.bottleneck || {}).topN || [])[0] || null;
+  return {
+    layoutRevision: String(run.layoutRevision || ""),
+    throughput: cardNumber(throughput.value),
+    waitMeanSec: cardNumber(wait.meanSec),
+    waitP95Sec: cardNumber(wait.p95Sec),
+    forkliftCount: fork ? cardNumber(fork.resourceCount) : null,
+    bottleneckId: top && top.entityId ? String(top.entityId) : "",
+  };
+}
+
+function throughputText(value) {
+  if (value === null || value === undefined) return "没有吞吐数字";
+  return formatNumber(value);
+}
+
+/** Difference of two pinned runs. Null samples are not treated as zero. */
+export function cardDeltaText(pinned, current) {
+  if (!pinned || !current) return "先记下一次运行的四卡。";
+  const same = pinned.layoutRevision !== "" && pinned.layoutRevision === current.layoutRevision;
+  const throughputDelta = cardNumber(current.throughput) === null || cardNumber(pinned.throughput) === null
+    ? null
+    : current.throughput - pinned.throughput;
+  const waitDelta = cardNumber(current.waitMeanSec) === null || cardNumber(pinned.waitMeanSec) === null
+    ? null
+    : current.waitMeanSec - pinned.waitMeanSec;
+  return [
+    same ? "两次是同一布局修订。" : "两次布局修订不同。",
+    `上次 ${pinned.layoutRevision || "未签发"} 吞吐 ${throughputText(pinned.throughput)} 等待 ${formatWait(pinned.waitMeanSec)}`,
+    `这次 ${current.layoutRevision || "未签发"} 吞吐 ${throughputText(current.throughput)} 等待 ${formatWait(current.waitMeanSec)}`,
+    `吞吐相差 ${throughputDelta === null ? "没有吞吐数字" : signed(throughputDelta)}`,
+    `等待相差 ${waitDelta === null ? "无完成任务" : signed(waitDelta)} 秒`,
+  ].join("\n");
+}

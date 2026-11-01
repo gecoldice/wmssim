@@ -1,7 +1,7 @@
 import { copy } from "../copy";
 import { isRuntimeConveyor } from "../library/catalog";
 import { SPEC_PACKS, type NormFinding, type NormPhase, type SpecPackId } from "../prepare/norms";
-import { formatNumber, formatP95, formatWait } from "../run-cards/format.js";
+import { formatNumber, formatP95, formatWait, unitAmount } from "../run-cards/format.js";
 import type { Draft, PoseEl, ScenarioFields } from "../workbench/draft";
 import { conveyorLinks, parseNum, portsLinked } from "../workbench/draft";
 
@@ -314,6 +314,15 @@ export function InspectorPanel({
               onChange={(value) => onField({ maxForklifts: value })}
             />
           </div>
+          <NumberField
+            label="叉车单价"
+            unit="元/台"
+            inputId="forkliftPrice"
+            value={fields.forkliftPrice}
+            placeholder={copy.missing}
+            onChange={(value) => onField({ forkliftPrice: value })}
+          />
+          <p className="inspector-empty">留空不算金额。这里没有价目表。</p>
           <button className="ghost-btn" id="forkliftCountSearch" type="button" disabled={searchBusy} onClick={() => onSearch?.()}>
             按等待找最少叉车
           </button>
@@ -328,6 +337,7 @@ export function InspectorPanel({
               <p>
                 {crew.forkliftCount} 台时，等待均值不超过 {formatNumber(crew.waitMeanMaxSec)} 秒。
               </p>
+              <p id="unitAmount">{unitAmount(crew.forkliftCount, fields.forkliftPrice).text}</p>
               <button className="ghost-btn" type="button" onClick={() => onApplyCount?.(crew.forkliftCount)}>
                 把叉车数量改成 {crew.forkliftCount}
               </button>
