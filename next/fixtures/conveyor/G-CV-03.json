@@ -18,13 +18,23 @@
     },
     {
       "caseId": "R3_curve_on_path",
-      "title": "任务必经路径含 CV-CURVE-01",
-      "assert": "本切片暂不仿真该类；藏四卡"
+      "title": "任务必经 CV-CURVE-01 再进直线",
+      "assert": "弯道按 length/speed 走完，再走直线；不再拒为未仿真"
     },
     {
-      "caseId": "R4_merge_on_path",
-      "title": "任务必经路径含 CV-MERGE-01 或 CV-DIV-01 或 CV-BUF-01",
-      "assert": "同 R3；弯道/合流/分流/缓冲均非本刀"
+      "caseId": "R4_merge_one_inlet",
+      "title": "CV-MERGE-01 只有一个入口",
+      "assert": "拒载：合流至少要两个入口；藏四卡"
+    },
+    {
+      "caseId": "R4_div_one_outlet",
+      "title": "CV-DIV-01 只有一个出口",
+      "assert": "拒载：分流至少要两个出口；藏四卡"
+    },
+    {
+      "caseId": "R4_buf_missing_slots",
+      "title": "CV-BUF-01 未填 capacity_slots",
+      "assert": "拒载：缓冲位数未填写；藏四卡"
     },
     {
       "caseId": "R5_agv_required",

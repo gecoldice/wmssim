@@ -1,8 +1,10 @@
-"""Straight-line conveyor runtime for CV-STR-01, CV-ROL-01 and CV-BELT-01.
+"""Conveyor runtime for straight, curve, merge, divert and buffer.
 
 Formal speed is speed_mpm. The engine uses m/s = speed_mpm / 60.
-speed_m_s is not a second primary field. Curves, merges, diverts and the
-other CV types stay unsimulated. A refusal happens before the event loop,
+speed_m_s is not a second primary field. Travel time is length_m / speed.
+Straight, curve and divert segments overlap. A merge holds one load.
+A buffer holds capacity_slots loads and makes the next load wait.
+Vertical, chute, loop and induct still refuse before the event loop,
 so the caller does not receive cards.
 """
 
@@ -17,6 +19,7 @@ from .errors import DesError
 from .scope import unsimulated_ids, unsimulated_message
 
 LINEAR_TYPES = ("CV-STR-01", "CV-ROL-01", "CV-BELT-01")
+ROUTED_TYPES = LINEAR_TYPES + ("CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01")
 LINK_MESSAGE = "输送还没接上：把端口对到邻段或月台后再推演"
 MISSING_MESSAGE = "还差必填参数才能推演"
 
@@ -54,6 +57,46 @@ def type_of(el: Dict[str, Any]) -> str:
 
 def is_linear(el: Dict[str, Any]) -> bool:
     return type_of(el) in LINEAR_TYPES
+
+
+def is_routed(el: Dict[str, Any]) -> bool:
+    return type_of(el) in ROUTED_TYPES
+
+
+def buffer_slots(el: Dict[str, Any]) -> Optional[int]:
+    value = param(el, "capacity_slots")
+    if value in (None, ""):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or number < 1 or abs(number - round(number)) > 1e-9:
+        return None
+    return int(round(number))
+
+
+def segment_capacity(el: Dict[str, Any]) -> Optional[int]:
+    tid = type_of(el)
+    if tid == "CV-MERGE-01":
+        return 1
+    if tid == "CV-BUF-01":
+        return buffer_slots(el)
+    return None
+
+
+def topology_refusal(el: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    tid = type_of(el)
+    ports = ports_of(el)
+    incoming = [port for port in ports if port.get("role") in {"in", "bidirectional"}]
+    outgoing = [port for port in ports if port.get("role") in {"out", "bidirectional"}]
+    if tid == "CV-MERGE-01" and len(incoming) < 2:
+        return "INPUT_UNCONFIRMED", f"合流至少要两个入口（{tid}）"
+    if tid == "CV-DIV-01" and len(outgoing) < 2:
+        return "INPUT_UNCONFIRMED", f"分流至少要两个出口（{tid}）"
+    if tid == "CV-BUF-01" and buffer_slots(el) is None:
+        return "INPUT_UNCONFIRMED", f"缓冲位数未填写（{tid}）"
+    return None
 
 
 def _bag(el: Dict[str, Any]) -> Dict[str, Any]:
@@ -198,6 +241,7 @@ class ConveyorSeg:
     y0: float
     x1: float
     y1: float
+    capacity: Optional[int] = None
 
     @property
     def speed_mps(self) -> float:
@@ -223,6 +267,9 @@ class ConveyorGraph:
     def linear_elements(self) -> List[Dict[str, Any]]:
         return [el for el in self.elements if is_linear(el)]
 
+    def routed_elements(self) -> List[Dict[str, Any]]:
+        return [el for el in self.elements if is_routed(el)]
+
     def segment(self, loc: str) -> ConveyorSeg:
         el = self.by_loc[loc]
         length = float(param(el, "length_m"))
@@ -242,6 +289,7 @@ class ConveyorGraph:
             y0=cy - dy,
             x1=cx + dx,
             y1=cy + dy,
+            capacity=segment_capacity(el),
         )
 
     def chain(self, origin: str, dest: str) -> List[ConveyorSeg]:
@@ -256,7 +304,7 @@ class ConveyorGraph:
             for nxt in self.adj.get(node, []):
                 next_cvs = cvs
                 el = self.by_loc.get(node)
-                if el is not None and is_linear(el) and node not in cvs:
+                if el is not None and is_routed(el) and node not in cvs:
                     next_cvs = cvs + (node,)
                 key = (nxt, next_cvs)
                 if key in seen:
@@ -312,16 +360,20 @@ def assess_snapshot(
     blocked = unsimulated_ids(type_of(el) for el in elements)
     if blocked:
         return "UNSUPPORTED_SCENARIO", unsimulated_message(blocked)
-    linears = [el for el in elements if is_linear(el)]
-    if not linears:
+    routed = [el for el in elements if is_routed(el)]
+    if not routed:
         return None
-    for el in linears:
+    for el in routed:
+        issue = topology_refusal(el)
+        if issue:
+            return issue
+    for el in routed:
         missing = missing_param_labels(el)
         if missing:
             shown = type_of(el)
             return "INPUT_UNCONFIRMED", f"{MISSING_MESSAGE}：{'、'.join(missing)}（{shown}）"
     connections = collect_connections(snapshot)
-    for el in linears:
+    for el in routed:
         if not ports_linked(el, connections):
             shown = type_of(el)
             inst = loc_of(el)
@@ -332,7 +384,7 @@ def assess_snapshot(
     if not needed:
         return None
     used = _used_locations(graph, _task_pairs(snapshot, demand, direct))
-    for el in linears:
+    for el in routed:
         if loc_of(el) not in used:
             continue
         if not (_allow(el) & needed):

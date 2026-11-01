@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server.browser";
 import { footprintCorners, assessPlacement, aabbHits, aabbOf, boxGap, columnBox, FIRE_LANE } from "../src/canvas/geom.ts";
-import { catalog, groupLabels, LIBRARY_IDS, SLICE11_IDS, isLinearConveyor, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
+import { catalog, groupLabels, LIBRARY_IDS, SLICE11_IDS, conveyorPortSpec, isLinearConveyor, isRuntimeConveyor, isUnsimulated, unsimulatedMessage } from "../src/library/catalog.ts";
 import { LibraryPanel } from "../src/library/LibraryPanel.tsx";
 import { EQUIPS, realGlbUrl } from "../src/proxy/equip-index.ts";
 import { buildFromEquip, buildPlaced, frameForZoom, interactionStyle, portsNearFootprint, PALETTE } from "../src/proxy/extrude.ts";
@@ -26,7 +26,14 @@ for (const group of seen) {
 }
 if (catalog.some((item) => !item.placeable)) throw new Error("library id left grey");
 if (catalog.some((item) => item.id !== item.id.toUpperCase() || item.id.includes("_"))) throw new Error("short name leaked into catalog");
-for (const id of ["CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01", "CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01", "MH-AGV-01", "ST-ASRS-01", "PK-DEPAL-AUTO-01"]) {
+for (const id of ["CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01"]) {
+  if (isUnsimulated(id) || !isRuntimeConveyor(id) || isLinearConveyor(id)) {
+    throw new Error(`${id} must be a routed conveyor, not a straight line and not refused`);
+  }
+  const item = catalog.find((row) => row.id === id);
+  if (!item?.placeable) throw new Error(`${id} must still be draggable`);
+}
+for (const id of ["CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01", "MH-AGV-01", "ST-ASRS-01", "PK-DEPAL-AUTO-01"]) {
   if (!isUnsimulated(id)) throw new Error(`${id} should stay out of the DES`);
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
@@ -37,8 +44,8 @@ for (const id of ["CV-STR-01", "CV-ROL-01", "CV-BELT-01"]) {
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
 }
 if (isUnsimulated("ST-PAL-01") || isUnsimulated("IN-DOCK-01")) throw new Error("manual types marked unsimulated");
-const blocked = unsimulatedMessage(["CV-CURVE-01", "MH-AGV-01", "ST-ASRS-01"]);
-if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-CURVE-01") || blocked.includes("CV-STR-01") || blocked.includes("即将")) {
+const blocked = unsimulatedMessage(["CV-VERT-01", "MH-AGV-01", "ST-ASRS-01"]);
+if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-VERT-01") || blocked.includes("CV-CURVE-01") || blocked.includes("CV-STR-01") || blocked.includes("即将")) {
   throw new Error(blocked);
 }
 if (copy.conveyorIdleNote.includes("已接入")) throw new Error("curve note implies the runtime is connected");
@@ -345,7 +352,7 @@ if (!refused.includes('data-decision-cards="hidden"')) throw new Error("refused 
 if (refused.includes('class="kpis"') || refused.includes("托盘吞吐") || refused.includes("—")) {
   throw new Error(`refused decision leaked a card shell: ${refused}`);
 }
-if (!refused.includes(copy.unsimulated) || !refused.includes("CV-CURVE-01") || !refused.includes("返回编辑")) {
+if (!refused.includes(copy.unsimulated) || !refused.includes("CV-VERT-01") || !refused.includes("返回编辑")) {
   throw new Error(refused);
 }
 const idle = decisionHtml({ run: null, rejected: null, idleNotice: copy.notRun });
@@ -439,8 +446,40 @@ if (!straightHtml.includes("脚印") || !straightHtml.includes('id="speed_mpm"')
   throw new Error("straight inspector hid footprint or speed_mpm");
 }
 const curveHtml = inspectorHtml(curveDrop, [...draft.elements, curveDrop]);
-if (!curveHtml.includes(copy.conveyorIdleNote) || curveHtml.includes("已接入")) {
-  throw new Error("curve inspector implies the runtime is connected");
+if (curveHtml.includes(copy.conveyorIdleNote) || curveHtml.includes("已接入") || !curveHtml.includes(copy.conveyorUnlinked)) {
+  throw new Error("curve inspector still treats the runtime as disconnected");
+}
+const mergeDrop = elementFromDrop(draft.elements, "CV-MERGE-01", 8, 4, { id: "n-acc", x: 8, y: 12 });
+const mergePorts = conveyorPortSpec("CV-MERGE-01").map((port) => port.id).join();
+if (mergePorts !== "p_in_a,p_in_b,p_out") throw new Error(mergePorts);
+const divPorts = conveyorPortSpec("CV-DIV-01").map((port) => port.id).join();
+if (divPorts !== "p_in,p_out_a,p_out_b") throw new Error(divPorts);
+const bufDrop = elementFromDrop(draft.elements, "CV-BUF-01", 8, 4, { id: "n-acc", x: 8, y: 12 });
+if (bufDrop.capacitySlots !== 1) throw new Error(`buffer slots ${bufDrop.capacitySlots}`);
+const savedTopo = buildLayout(
+  { ...draft, elements: [...draft.elements, curveDrop, mergeDrop, bufDrop] },
+  "layout-topo",
+  "pending",
+  { id: "facility-mixed", revision: "pending" },
+);
+const savedCurve = savedTopo.elements.find((el) => el.typeElementId === "CV-CURVE-01");
+const savedMerge = savedTopo.elements.find((el) => el.typeElementId === "CV-MERGE-01");
+const savedBuf = savedTopo.elements.find((el) => el.typeElementId === "CV-BUF-01");
+if (!savedCurve?.params.ports || savedCurve.params.speed_mpm !== 30 || savedCurve.params.throughput_uph !== 120) {
+  throw new Error(`curve params ${JSON.stringify(savedCurve && savedCurve.params)}`);
+}
+if (savedMerge?.params.connector_ids.join() !== "p_in_a,p_in_b,p_out") {
+  throw new Error(`merge ports ${JSON.stringify(savedMerge && savedMerge.params.connector_ids)}`);
+}
+if (savedBuf?.params.capacity_slots !== 1) throw new Error(`buffer param ${savedBuf && savedBuf.params.capacity_slots}`);
+const bufHtml = inspectorHtml(bufDrop, [...draft.elements, bufDrop]);
+if (!bufHtml.includes('id="capacity_slots"') || bufHtml.includes(copy.conveyorIdleNote)) {
+  throw new Error("buffer inspector hid capacity_slots");
+}
+const vertDrop = elementFromDrop(draft.elements, "CV-VERT-01", 8, 4, { id: "n-acc", x: 8, y: 12 });
+const vertHtml = inspectorHtml(vertDrop, [...draft.elements, vertDrop]);
+if (!vertHtml.includes(copy.conveyorIdleNote) || vertHtml.includes("已接入")) {
+  throw new Error("vertical inspector implies the runtime is connected");
 }
 const facility = buildFacility(draft, "facility-mixed", "pending");
 const layout = buildLayout(draft, "layout-mixed", "pending", { id: "facility-mixed", revision: "pending" });

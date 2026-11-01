@@ -1,8 +1,8 @@
 import { copy } from "../copy";
-import { isLinearConveyor } from "../library/catalog";
+import { isRuntimeConveyor } from "../library/catalog";
 import { SPEC_PACKS, type NormFinding, type NormPhase, type SpecPackId } from "../prepare/norms";
 import type { Draft, PoseEl, ScenarioFields } from "../workbench/draft";
-import { conveyorLinks, linearEndsLinked, parseNum } from "../workbench/draft";
+import { conveyorLinks, parseNum, portsLinked } from "../workbench/draft";
 
 type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?: string };
 
@@ -346,9 +346,10 @@ function ConveyorFields({
   selected: PoseEl;
   onElement: (patch: Partial<PoseEl>) => void;
 }) {
-  const linear = isLinearConveyor(selected.typeElementId);
-  const linked = linear && linearEndsLinked(selected, conveyorLinks(draft.elements));
+  const runtime = isRuntimeConveyor(selected.typeElementId);
+  const linked = runtime && portsLinked(selected, conveyorLinks(draft.elements));
   const speed = selected.speedMpm === undefined ? 30 : selected.speedMpm;
+  const slots = selected.capacitySlots === undefined ? 1 : selected.capacitySlots;
   return (
     <>
       <div className="field" id="footprintLine">
@@ -379,7 +380,25 @@ function ConveyorFields({
       <p className="inspector-empty" id="speedMpmNote">
         正式字段 speed_mpm。引擎按 m/s = speed_mpm / 60 计算。
       </p>
-      {linear ? (
+      {selected.typeElementId === "CV-BUF-01" ? (
+        <NumberField
+          label="缓冲位数"
+          unit="位"
+          inputId="capacity_slots"
+          value={slots === null ? "" : String(slots)}
+          placeholder={copy.missing}
+          onChange={(value) => {
+            if (value.trim() === "") {
+              onElement({ capacitySlots: null });
+              return;
+            }
+            const parsed = parseNum(value);
+            if (parsed === null) return;
+            onElement({ capacitySlots: parsed });
+          }}
+        />
+      ) : null}
+      {runtime ? (
         <p className="inspector-empty" id="conveyorLinkNote">
           {linked ? "两端已对上邻段或月台。" : copy.conveyorUnlinked}
         </p>
@@ -388,7 +407,7 @@ function ConveyorFields({
           {copy.conveyorIdleNote}
         </p>
       )}
-      {linear ? (
+      {runtime ? (
         <details>
           <summary className="panel-row fold-summary">
             <h3>输送默认参数</h3>

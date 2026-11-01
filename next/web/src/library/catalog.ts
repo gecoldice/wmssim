@@ -104,6 +104,13 @@ export const LIBRARY_IDS = [
 ] as const;
 
 const LINEAR_CONVEYOR = new Set(["CV-STR-01", "CV-ROL-01", "CV-BELT-01"]);
+const ROUTED_CONVEYOR = new Set([
+  ...LINEAR_CONVEYOR,
+  "CV-CURVE-01",
+  "CV-MERGE-01",
+  "CV-DIV-01",
+  "CV-BUF-01",
+]);
 
 const UNSIMULATED_EXACT = new Set([
   "MH-AGV-01",
@@ -120,8 +127,33 @@ export function isLinearConveyor(typeId: string): boolean {
   return LINEAR_CONVEYOR.has(typeId);
 }
 
+export function isRuntimeConveyor(typeId: string): boolean {
+  return ROUTED_CONVEYOR.has(typeId);
+}
+
+export function conveyorPortSpec(typeId: string): Array<{ id: string; role: "in" | "out" }> {
+  if (typeId === "CV-MERGE-01") {
+    return [
+      { id: "p_in_a", role: "in" },
+      { id: "p_in_b", role: "in" },
+      { id: "p_out", role: "out" },
+    ];
+  }
+  if (typeId === "CV-DIV-01") {
+    return [
+      { id: "p_in", role: "in" },
+      { id: "p_out_a", role: "out" },
+      { id: "p_out_b", role: "out" },
+    ];
+  }
+  return [
+    { id: "p_in", role: "in" },
+    { id: "p_out", role: "out" },
+  ];
+}
+
 export function isUnsimulated(typeId: string): boolean {
-  if (LINEAR_CONVEYOR.has(typeId)) return false;
+  if (ROUTED_CONVEYOR.has(typeId)) return false;
   return typeId.startsWith("CV-") || UNSIMULATED_EXACT.has(typeId);
 }
 

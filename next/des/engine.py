@@ -1,8 +1,10 @@
 """Event engine for the manual slice.
 
-Straight conveyors CV-STR-01, CV-ROL-01 and CV-BELT-01 travel at
-speed_mpm/60 metres per second when both ends are linked. Other CV types,
-AGV and ASRS still refuse before the scheduler, so they do not emit cards.
+Straight, curve, divert and buffer conveyors travel at speed_mpm/60
+metres per second when their ports are linked. A merge holds one load.
+A buffer holds capacity_slots loads; a full segment makes the next load wait.
+Vertical, chute, loop, induct, AGV and ASRS still refuse before the
+scheduler, so they do not emit cards.
 
 full_pallet: arrival, resource wait, empty travel, pick, loaded travel, ship.
 break_bulk: deliver a pallet to a break_bulk station slot, process, convert
@@ -82,6 +84,7 @@ class _Task:
     convey_done: bool = False
     handoff_ready: float = 0.0
     reserved: bool = False
+    conv_pulled: bool = False
 
 
 @dataclass
@@ -155,6 +158,7 @@ class DesEngine:
         self.graph: Optional[ConveyorGraph] = None
         self.occupied: Dict[str, Dict[str, Any]] = {}
         self.handoff_queue_sec = 0.0
+        self.conv_gates: Dict[str, _Gate] = {}
 
     def _require_number(self, bag: Dict[str, Any], key: str, label: str) -> float:
         if key not in bag or bag[key] is None or bag[key] == "":
@@ -1128,7 +1132,7 @@ class DesEngine:
             task.status = "conveying"
             task.wait_sec = 0.0
             task.conv_i = 0
-            self._convey_enter(task)
+            self._convey_request(task)
             return
         task.status = "queued"
         pool = self.picker_pool if task.direction == "piece_pick" else self.forklift_pool
@@ -1245,12 +1249,37 @@ class DesEngine:
         row = self.occupied.setdefault(seg.instance_id, {"elementId": seg.type_id, "occupiedSec": 0.0})
         row["occupiedSec"] += dt
 
-    def _convey_enter(self, task: _Task) -> None:
+    def _convey_request(self, task: _Task) -> None:
         seg = task.chain[task.conv_i]
-        if task.conv_i == 0:
+        if task.conv_i == 0 and not task.conv_pulled:
             self.inventory.remove(str(task.location_id), task.qty)
+            task.conv_pulled = True
+        if seg.capacity is None:
+            self._convey_roll(task)
+            return
+        gate = self.conv_gates.setdefault(seg.instance_id, _Gate(cap=int(seg.capacity)))
+        requested_at = self.t
+        if len(gate.holders) < gate.cap:
+            self._convey_grant(task, requested_at)
+            return
+        gate.queue.append({"taskId": task.task_id, "requestedAt": requested_at})
+        task.status = "waiting_conveyor"
+
+    def _convey_grant(self, task: _Task, requested_at: float) -> None:
+        seg = task.chain[task.conv_i]
+        gate = self.conv_gates[seg.instance_id]
+        gate.holders.append(task.task_id)
+        wait = max(0.0, self.t - requested_at)
+        if wait > 1e-9:
+            task.wait_sec += wait
+            self.entity_wait[seg.instance_id] = self.entity_wait.get(seg.instance_id, 0.0) + wait
+        self._convey_roll(task)
+
+    def _convey_roll(self, task: _Task) -> None:
+        seg = task.chain[task.conv_i]
         dt = float(seg.travel_sec)
         t1 = self.t + dt
+        task.status = "conveying"
         self._emit(
             "convey_enter",
             {
@@ -1286,8 +1315,21 @@ class DesEngine:
             },
         )
 
+    def _release_conv(self, seg: Any, task: _Task) -> None:
+        gate = self.conv_gates.get(seg.instance_id)
+        if gate is None:
+            return
+        if task.task_id in gate.holders:
+            gate.holders.remove(task.task_id)
+        if not gate.queue or len(gate.holders) >= gate.cap:
+            return
+        head = gate.queue.pop(0)
+        waiter = self.tasks[head["taskId"]]
+        self._convey_grant(waiter, float(head["requestedAt"]))
+
     def _on_convey_exit(self, payload: Dict[str, Any]) -> None:
         task = self.tasks[payload["taskId"]]
+        seg = task.chain[task.conv_i]
         self._emit(
             "convey_exit",
             {
@@ -1296,9 +1338,11 @@ class DesEngine:
                 "instanceId": payload.get("instanceId"),
             },
         )
+        if seg.capacity is not None:
+            self._release_conv(seg, task)
         task.conv_i += 1
         if task.conv_i < len(task.chain):
-            self._convey_enter(task)
+            self._convey_request(task)
             return
         self._convey_deliver(task)
 
@@ -1458,7 +1502,7 @@ class DesEngine:
             outbound_pallet_eq=self.outbound_pallet_eq,
             incomplete_count=len(incomplete),
         )
-        if self.graph and self.graph.linear_elements():
+        if self.graph and self.graph.routed_elements():
             kpi["secondary"]["conveyor"] = {
                 "segments": [
                     {

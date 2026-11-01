@@ -1,7 +1,8 @@
-"""G-CV-01/02/03 and MX-D1-CV.
+"""G-CV-01 through G-CV-07 and MX-D1-CV.
 
 Assert pass does not change fixture status. These files stay spec_only.
-That is not UA S-D1, not a substitute for MX-D1-EB, and not curve/merge/divert runtime.
+That is not UA S-D1 and not a substitute for MX-D1-EB.
+Curve, merge, divert and buffer have a runtime. Vertical, chute, loop and induct still refuse.
 """
 
 from __future__ import annotations
@@ -19,10 +20,6 @@ from des.mxeval import build_snapshot, run_case
 
 CV = Path(__file__).resolve().parents[1] / "fixtures" / "conveyor"
 REJECT_TYPES = (
-    "CV-CURVE-01",
-    "CV-MERGE-01",
-    "CV-DIV-01",
-    "CV-BUF-01",
     "CV-VERT-01",
     "CV-CHUTE-01",
     "CV-LOOP-01",
@@ -66,6 +63,11 @@ def _cards(result: Dict[str, Any], problems: List[str], *, require_util: bool) -
     for row in (cards.get("bottleneck") or {}).get("topN") or []:
         _finite(row.get("waitSec"), f"bottleneck {row.get('entityId')}", problems)
         _finite(row.get("share"), f"share {row.get('entityId')}", problems)
+
+
+def _close(problems: List[str], label: str, got: Any, expected: float, tol: float = 1e-6) -> None:
+    if isinstance(got, bool) or not isinstance(got, (int, float)) or not math.isfinite(float(got)) or abs(float(got) - expected) > tol:
+        problems.append(f"{label} {got}，期望 {expected}")
 
 
 def _timing(result: Dict[str, Any], length_m: float, speed_mpm: float) -> Tuple[float, float]:
@@ -115,6 +117,28 @@ def evaluate_g01(fixture: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
             problems.append(f"{type_id} 时长 {rolled_dt}s，期望 {expected}s")
         if not any(seg.get("mode") == "conveyor" and seg.get("elementId") == type_id for seg in rolled["trajectory"]["segments"]):
             problems.append(f"{type_id} 没有对应输送段")
+    pair = deepcopy(fixture)
+    pair["scenario"]["initialInventory"] = {"SRC": 2}
+    pair["scenario"]["tasks"].append(
+        {
+            "taskId": "T2",
+            "flowKind": "full_pallet",
+            "qtyPallets": 1,
+            "originId": "SRC",
+            "destId": "DST",
+            "pathMode": "conveyor",
+            "readyAt": 0,
+        }
+    )
+    try:
+        overlapped = run_fixture(pair)
+    except DesError as exc:
+        problems.append(f"直线两托应可重叠，却拒载 {exc.code} {exc.message}")
+    else:
+        enters = [event for event in overlapped["events"] if event.get("kind") == "convey_enter"]
+        if len(enters) != 2 or any(abs(float(event["t"])) > 1e-6 for event in enters):
+            shown = [(event.get("taskId"), event.get("t")) for event in enters]
+            problems.append(f"直线两托不应互相等待：{shown}")
     return problems, result
 
 
@@ -238,17 +262,35 @@ def evaluate_g03(base: Dict[str, Any]) -> List[str]:
 
     attempt("R1_missing_connector", strip_ports, "输送还没接上", "CONVEYOR_UNLINKED")
     attempt("R2_broken_link", drop_links, "输送还没接上", "CONVEYOR_UNLINKED")
-    attempt("R3_curve_on_path", insert_type("CV-CURVE-01"), "本切片暂不仿真该类", "UNSUPPORTED_SCENARIO")
-    attempt("R4_merge_on_path", insert_type("CV-MERGE-01"), "本切片暂不仿真该类", "UNSUPPORTED_SCENARIO")
-    attempt("R4_div_on_path", insert_type("CV-DIV-01"), "本切片暂不仿真该类", "UNSUPPORTED_SCENARIO")
-    attempt("R4_buf_on_path", insert_type("CV-BUF-01"), "本切片暂不仿真该类", "UNSUPPORTED_SCENARIO")
+    attempt("R4_merge_one_inlet", insert_type("CV-MERGE-01"), "合流至少要两个入口", "INPUT_UNCONFIRMED")
+    attempt("R4_div_one_outlet", insert_type("CV-DIV-01"), "分流至少要两个出口", "INPUT_UNCONFIRMED")
+    attempt("R4_buf_missing_slots", insert_type("CV-BUF-01"), "缓冲位数未填写", "INPUT_UNCONFIRMED")
     attempt("R5_agv_required", agv, "MH-AGV-01", "UNSUPPORTED_SCENARIO")
     attempt("R6_revision_mismatch", revision, "layoutRevision", "LAYOUT_REVISION_MISMATCH")
     attempt("R7_allow_load_mismatch", load_type, "CV-STR-01", "UNSUPPORTED_SCENARIO")
     for type_id in REJECT_TYPES:
-        if type_id in {"CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01", "MH-AGV-01"}:
+        if type_id == "MH-AGV-01":
             continue
         attempt(f"extra_{type_id}", insert_type(type_id), type_id, "UNSUPPORTED_SCENARIO")
+
+    curve = deepcopy(base)
+    insert_type("CV-CURVE-01")(curve)
+    try:
+        produced = _run_case(curve)
+    except DesError as exc:
+        problems.append(f"R3_curve_on_path 不应拒载 {exc.code} {exc.message}")
+        return problems
+    print("  R3_curve_on_path 跑通")
+    segs = [seg for seg in produced["trajectory"]["segments"] if seg.get("mode") == "conveyor"]
+    ids = [seg.get("elementId") for seg in segs]
+    if ids != ["CV-CURVE-01", "CV-STR-01"]:
+        problems.append(f"R3 段序 {ids}，期望弯道再直线")
+    _close(problems, "R3 弯道 enter→exit", _timing(produced, 2, 30)[1], 4)
+    total = sum(float(seg["t1"]) - float(seg["t0"]) for seg in segs)
+    _close(problems, "R3 全程", total, 28)
+    if not produced["trajectory"]["tasks"] or any(row.get("status") != "done" for row in produced["trajectory"]["tasks"]):
+        problems.append(f"R3 任务未完成 {produced['trajectory']['tasks']}")
+    _cards(produced, problems, require_util=False)
     return problems
 
 
@@ -306,9 +348,143 @@ def evaluate_mx(fixture: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
     return problems, result
 
 
+def _task(result: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+    for row in result["trajectory"]["tasks"]:
+        if row.get("taskId") == task_id:
+            return row
+    return {}
+
+
+def _event_t(result: Dict[str, Any], kind: str, task_id: str) -> float:
+    for event in result["events"]:
+        if event.get("kind") == kind and event.get("taskId") == task_id:
+            return float(event["t"])
+    return float("nan")
+
+
+def evaluate_g04(fixture: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
+    """Curve only: 3 m at 30 mpm is 6 s. One pallet, horizon 300 s, throughput 12."""
+    problems = _honesty(fixture)
+    result: Dict[str, Any] = {}
+    try:
+        result = run_fixture(fixture)
+    except DesError as exc:
+        problems.append(f"G-CV-04 拒载 {exc.code} {exc.message}")
+        return problems, result
+    if not result["inventoryConservation"].get("ok"):
+        problems.append(f"conservation 不成立 {result['inventoryConservation']}")
+    segs = [seg for seg in result["trajectory"]["segments"] if seg.get("mode") == "conveyor"]
+    if len(segs) != 1 or segs[0].get("elementId") != "CV-CURVE-01":
+        problems.append(f"弯道段 {segs}")
+    _close(problems, "弯道时长", _timing(result, 3, 30)[1], 6)
+    _close(problems, "等待", _task(result, "T1").get("waitSec"), 0)
+    _close(problems, "吞吐", (result["cards"]["throughput"] or {}).get("value"), 12)
+    _close(problems, "托当量", (result["cards"]["throughput"] or {}).get("outboundPalletEq"), 1)
+    if _task(result, "T1").get("status") != "done":
+        problems.append(f"任务未完成 {_task(result, 'T1')}")
+    _cards(result, problems, require_util=False)
+    return problems, result
+
+
+def _gate_pair(fixture: Dict[str, Any], label: str, instance_id: str, travel_sec: float) -> Tuple[List[str], Dict[str, Any]]:
+    """Two loads, capacity 1, travel_sec occupy. Waits 0 and travel_sec. Horizon 300 → 24 palletEq/h."""
+    problems = _honesty(fixture)
+    result: Dict[str, Any] = {}
+    try:
+        result = run_fixture(fixture)
+    except DesError as exc:
+        problems.append(f"{label} 拒载 {exc.code} {exc.message}")
+        return problems, result
+    if not result["inventoryConservation"].get("ok"):
+        problems.append(f"conservation 不成立 {result['inventoryConservation']}")
+    _close(problems, f"{label} T1 等待", _task(result, "T1").get("waitSec"), 0)
+    _close(problems, f"{label} T2 等待", _task(result, "T2").get("waitSec"), travel_sec)
+    _close(problems, f"{label} T1 进入", _event_t(result, "convey_enter", "T1"), 0)
+    _close(problems, f"{label} T1 离开", _event_t(result, "convey_exit", "T1"), travel_sec)
+    _close(problems, f"{label} T2 进入", _event_t(result, "convey_enter", "T2"), travel_sec)
+    _close(problems, f"{label} T2 离开", _event_t(result, "convey_exit", "T2"), travel_sec * 2)
+    _close(problems, f"{label} 均值", (result["cards"]["wait"] or {}).get("meanSec"), travel_sec / 2)
+    _close(problems, f"{label} P95", (result["cards"]["wait"] or {}).get("p95Sec"), travel_sec)
+    _close(problems, f"{label} 吞吐", (result["cards"]["throughput"] or {}).get("value"), 24)
+    _close(problems, f"{label} 托当量", (result["cards"]["throughput"] or {}).get("outboundPalletEq"), 2)
+    top = (result["cards"]["bottleneck"] or {}).get("topN") or []
+    if not top or top[0].get("entityId") != instance_id:
+        problems.append(f"{label} 瓶颈不是 {instance_id}：{top}")
+    else:
+        _close(problems, f"{label} 瓶颈等待", top[0].get("waitSec"), travel_sec)
+    if any(row.get("status") != "done" for row in result["trajectory"]["tasks"]):
+        problems.append(f"{label} 任务未完成")
+    _cards(result, problems, require_util=False)
+    return problems, result
+
+
+def evaluate_g05(fixture: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
+    problems, result = _gate_pair(fixture, "G-CV-05", "MG1", 12)
+    if problems:
+        return problems, result
+    clone = deepcopy(fixture)
+    for el in clone["layoutSnapshot"]["elements"]:
+        if el.get("instanceId") == "MG1":
+            el["params"]["capacity_slots"] = 2
+    try:
+        rolled = run_fixture(clone)
+    except DesError as exc:
+        problems.append(f"合流忽略位数仍应跑通，却拒载 {exc.code} {exc.message}")
+        return problems, result
+    _close(problems, "合流仍为 1 位时 T2 等待", _task(rolled, "T2").get("waitSec"), 12)
+    return problems, result
+
+
+def evaluate_g06(fixture: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
+    """Divert 2 m + branch B 4 m at 30 mpm = 4 s + 8 s. Branch A is not on the path."""
+    problems = _honesty(fixture)
+    result: Dict[str, Any] = {}
+    try:
+        result = run_fixture(fixture)
+    except DesError as exc:
+        problems.append(f"G-CV-06 拒载 {exc.code} {exc.message}")
+        return problems, result
+    if not result["inventoryConservation"].get("ok"):
+        problems.append(f"conservation 不成立 {result['inventoryConservation']}")
+    segs = [seg for seg in result["trajectory"]["segments"] if seg.get("mode") == "conveyor"]
+    ids = [(seg.get("instanceId"), seg.get("elementId")) for seg in segs]
+    if ids != [("DIV", "CV-DIV-01"), ("BR_B", "CV-STR-01")]:
+        problems.append(f"分流段序 {ids}")
+    if any(seg.get("instanceId") == "BR_A" for seg in segs):
+        problems.append("未选支路进了轨迹")
+    _close(problems, "分流口时长", _timing(result, 2, 30)[1], 4)
+    total = sum(float(seg["t1"]) - float(seg["t0"]) for seg in segs)
+    _close(problems, "所选支路全程", total, 12)
+    _close(problems, "等待", _task(result, "T1").get("waitSec"), 0)
+    _close(problems, "吞吐", (result["cards"]["throughput"] or {}).get("value"), 12)
+    if _task(result, "T1").get("status") != "done":
+        problems.append("分流任务未完成")
+    _cards(result, problems, require_util=False)
+    return problems, result
+
+
+def evaluate_g07(fixture: Dict[str, Any]) -> Tuple[List[str], Dict[str, Any]]:
+    problems, result = _gate_pair(fixture, "G-CV-07", "BUF1", 12)
+    if problems:
+        return problems, result
+    clone = deepcopy(fixture)
+    for el in clone["layoutSnapshot"]["elements"]:
+        if el.get("instanceId") == "BUF1":
+            el["params"]["capacity_slots"] = 2
+    try:
+        rolled = run_fixture(clone)
+    except DesError as exc:
+        problems.append(f"缓冲 2 位应跑通，却拒载 {exc.code} {exc.message}")
+        return problems, result
+    _close(problems, "2 位时 T1 等待", _task(rolled, "T1").get("waitSec"), 0)
+    _close(problems, "2 位时 T2 等待", _task(rolled, "T2").get("waitSec"), 0)
+    _close(problems, "2 位时 T2 进入", _event_t(rolled, "convey_enter", "T2"), 0)
+    return problems, result
+
+
 def run_suite() -> int:
     print("command: PYTHONPATH=next python3 next/scripts/run_cv.py")
-    print("honesty: assert pass keeps status=spec_only; not UA S-D1; not MX-D1-EB; not curve/merge/divert")
+    print("honesty: assert pass keeps status=spec_only; not UA S-D1; not MX-D1-EB; vert/chute/loop/induct still refuse")
     failures = 0
     g01 = _load("G-CV-01.json")
     g02 = _load("G-CV-02.json")
@@ -366,6 +542,31 @@ def run_suite() -> int:
     else:
         print("PASS G-CV-03 status", _load("G-CV-03.json")["status"])
         print("  ", (_load("G-CV-03.json").get("expected") or {}).get("kpiHonesty"))
+    for name, evaluate in (
+        ("G-CV-04.json", evaluate_g04),
+        ("G-CV-05.json", evaluate_g05),
+        ("G-CV-06.json", evaluate_g06),
+        ("G-CV-07.json", evaluate_g07),
+    ):
+        fixture = _load(name)
+        problems, result = evaluate(fixture)
+        if problems:
+            failures += len(problems)
+            print("FAIL", fixture["fixtureId"])
+            for problem in problems:
+                print("  ", problem)
+        else:
+            cards = result["cards"]
+            print("PASS", fixture["fixtureId"], "status", fixture["status"])
+            print(
+                "  observed throughput",
+                cards["throughput"]["value"],
+                "waitMean",
+                cards["wait"]["meanSec"],
+                "waitP95",
+                cards["wait"]["p95Sec"],
+            )
+            print("  ", (fixture.get("expected") or {}).get("handCheck"))
     mx = _load("MX-D1-CV.json")
     p4, result4 = evaluate_mx(mx)
     if p4:

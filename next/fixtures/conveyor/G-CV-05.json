@@ -1,0 +1,100 @@
+{
+  "fixtureId": "G-CV-05",
+  "title": "合流 CV-MERGE-01：同时只过 1 托，6 m @ 30 mpm = 12 s",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "spec_only",
+  "note": "两个入口都接上。位数写 2 也不放宽，合流固定为 1。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_cv_merge_05",
+    "layoutRevision": "cv_rev_g05",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      {
+        "instanceId": "MG1",
+        "elementId": "CV-MERGE-01",
+        "kind": "device",
+        "pose": { "x": 0, "y": 0, "orientation_deg": 0 },
+        "params": {
+          "length_m": 6,
+          "width_m": 2,
+          "speed_mpm": 30,
+          "throughput_uph": 60,
+          "max_load_kg": 500,
+          "direction": "forward",
+          "allow_load_types": ["pallet"]
+        },
+        "connector_ids": ["p_in_a", "p_in_b", "p_out"],
+        "ports": [
+          { "id": "p_in_a", "role": "in" },
+          { "id": "p_in_b", "role": "in" },
+          { "id": "p_out", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "SRC",
+        "elementId": "IN-BUF-01",
+        "kind": "staging",
+        "pose": { "x": -4, "y": 0 },
+        "accessNodeId": "N_src",
+        "labels": ["recv"],
+        "connector_ids": ["to_a", "to_b"],
+        "ports": [
+          { "id": "to_a", "role": "out" },
+          { "id": "to_b", "role": "out" }
+        ]
+      },
+      {
+        "instanceId": "DST",
+        "elementId": "OUT-BUF-01",
+        "kind": "staging",
+        "pose": { "x": 6, "y": 0 },
+        "accessNodeId": "N_dst",
+        "labels": ["ship"],
+        "connector_ids": ["from_cv"],
+        "ports": [{ "id": "from_cv", "role": "in" }]
+      },
+      { "elementId": "N_src", "kind": "node", "pose": { "x": -4, "y": 0 } },
+      { "elementId": "N_dst", "kind": "node", "pose": { "x": 6, "y": 0 } }
+    ],
+    "connections": [
+      { "from": { "instanceId": "SRC", "portId": "to_a" }, "to": { "instanceId": "MG1", "portId": "p_in_a" } },
+      { "from": { "instanceId": "SRC", "portId": "to_b" }, "to": { "instanceId": "MG1", "portId": "p_in_b" } },
+      { "from": { "instanceId": "MG1", "portId": "p_out" }, "to": { "instanceId": "DST", "portId": "from_cv" } }
+    ],
+    "edges": []
+  },
+  "scenario": {
+    "expectedLayoutRevision": "cv_rev_g05",
+    "horizonSec": 300,
+    "seed": 205,
+    "resources": [],
+    "tasks": [
+      {
+        "taskId": "T1",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SRC",
+        "destId": "DST",
+        "pathMode": "conveyor",
+        "readyAt": 0
+      },
+      {
+        "taskId": "T2",
+        "flowKind": "full_pallet",
+        "qtyPallets": 1,
+        "originId": "SRC",
+        "destId": "DST",
+        "pathMode": "conveyor",
+        "readyAt": 0
+      }
+    ],
+    "initialInventory": { "SRC": 2 }
+  },
+  "expected": {
+    "mustReject": false,
+    "handCheck": "6 / (30/60) = 12 s 占用。T1 等待 0，t=12 离开。T2 等待 12，t=12 进入，t=24 离开。均值 6，n=2 的 P95 名次 2 = 12。2 托 / (300/3600) h = 24 palletEq/h。瓶颈是 MG1，等待 12 s。",
+    "kpiHonesty": "本夹具通 ≠ UA S-D1 / 全库 KPI 绿。status 保持 spec_only。"
+  }
+}
