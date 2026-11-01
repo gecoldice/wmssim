@@ -8,13 +8,14 @@ import {
   pollJob,
   saveFacility,
   saveLayout,
+  searchForkliftCount,
   startPrepare,
   startSimulation,
 } from "../api/client";
 import { snapCenter, type Guide, type Tone } from "../canvas/geom";
 import { LayoutCanvas, type CanvasHandle } from "../canvas/LayoutCanvas";
 import { copy } from "../copy";
-import { InspectorPanel } from "../inspector/InspectorPanel";
+import { InspectorPanel, type CrewSearchResult } from "../inspector/InspectorPanel";
 import { LibraryPanel } from "../library/LibraryPanel";
 import { catalogItem, isPlaceable, unsimulatedMessage, type CatalogGroup } from "../library/catalog";
 import { readAccepted, rememberAccepted } from "../persist/lastAccepted.js";
@@ -81,6 +82,28 @@ type Ghost = {
 function textOf(data: Record<string, unknown> | undefined): string {
   if (!data) return "请求失败";
   return String(data.message || data.code || "请求失败");
+}
+
+function humanRefusal(raw: string): boolean {
+  return (
+    raw.includes(copy.unsimulated) ||
+    raw.includes(copy.conveyorUnlinked) ||
+    raw.includes(copy.missingParams) ||
+    raw.includes("合流至少要两个入口") ||
+    raw.includes("分流至少要两个出口") ||
+    raw.includes("缓冲位数未填写") ||
+    raw.includes("单向通道走不通") ||
+    raw.includes("转不过这个弯") ||
+    raw.includes("至少需要 1 台 AGV") ||
+    raw.includes("立库节拍未填写") ||
+    raw.includes("立体库位不能交给叉车取货") ||
+    raw.includes("加到上限等待仍超过目标") ||
+    raw.includes("等待均值上限不能为负") ||
+    raw.includes("这个搜索只看整托") ||
+    raw.includes("叉车搜索上限最多 8 台") ||
+    raw.includes("叉车搜索上限至少是 1") ||
+    raw.includes("至少需要 1 台叉车作为样板")
+  );
 }
 
 function draftFromSaved(facility: Record<string, unknown>, document: Record<string, unknown>): Draft {
@@ -153,6 +176,7 @@ export function Workbench() {
   const [past, setPast] = useState<Draft[]>([]);
   const [future, setFuture] = useState<Draft[]>([]);
   const [scenario, setScenario] = useState<ScenarioFields>(emptyScenario());
+  const [crew, setCrew] = useState<CrewSearchResult | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("");
   const [facilityId, setFacilityId] = useState("facility-main");
@@ -543,21 +567,89 @@ export function Workbench() {
       note("推演完成");
     } catch (error) {
       const raw = error instanceof Error ? error.message : "";
-      const human =
-        raw.includes(copy.unsimulated) ||
-        raw.includes(copy.conveyorUnlinked) ||
-        raw.includes(copy.missingParams) ||
-        raw.includes("合流至少要两个入口") ||
-        raw.includes("分流至少要两个出口") ||
-        raw.includes("缓冲位数未填写") ||
-        raw.includes("单向通道走不通") ||
-        raw.includes("转不过这个弯") ||
-        raw.includes("至少需要 1 台 AGV") ||
-        raw.includes("立库节拍未填写") ||
-        raw.includes("立体库位不能交给叉车取货");
       setRun(null);
-      setRejected(human ? raw : `${copy.simFail} ${raw}`);
+      setRejected(humanRefusal(raw) ? raw : `${copy.simFail} ${raw}`);
       setMode("decision");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSearch() {
+    if (normPhase === "stale") {
+      note("已选规范包还没校核，不能推演。");
+      return;
+    }
+    if (normPhase === "fail") {
+      note("规范有硬冲突，不能推演。取消勾选，或按建议修好再校核。");
+      return;
+    }
+    if (!layoutRev || !prepare?.ready || dirty) {
+      note(copy.needPrepare);
+      return;
+    }
+    const blocked = unsimulatedMessage(draft.elements.map((el) => el.typeElementId));
+    if (blocked) {
+      note(blocked);
+      return;
+    }
+    const conveyorStop = conveyorRefusal(draft);
+    if (conveyorStop) {
+      note(conveyorStop);
+      return;
+    }
+    const missing = missingScenario(scenario);
+    if (missing.length) {
+      note(`${copy.needFields} ${missing.join("、")}`);
+      return;
+    }
+    const waitMeanMax = parseNum(scenario.waitMeanMax);
+    const maxCount = parseNum(scenario.maxForklifts);
+    if (waitMeanMax === null) {
+      note("等待均值上限还没有填。");
+      return;
+    }
+    if (maxCount === null) {
+      note("最多试几台还没有填。");
+      return;
+    }
+    setBusy(true);
+    try {
+      const started = await searchForkliftCount({
+        layoutRef: { id: layoutId, revision: layoutRev },
+        demand: buildDemand(draft, scenario),
+        operating: buildOperating(scenario),
+        runControl: {
+          horizonSec: horizonSec(scenario),
+          seedStreams: { demand: 7 },
+          metricDefinitionVersion: "metrics-slice-manual-v1",
+        },
+        waitMeanMaxSec: waitMeanMax,
+        maxCount,
+      });
+      if (started.status !== 200) throw new Error(textOf(started.data));
+      if (started.data.kpiFromUiDemo !== false) {
+        setCrew(null);
+        note(copy.demoRejected);
+        return;
+      }
+      const blob = JSON.stringify(started.data);
+      if (blob.toLowerCase().includes("price") || blob.includes("元") || blob.includes("报价")) {
+        setCrew(null);
+        note("这次结果里出现了价格，已丢弃。");
+        return;
+      }
+      const found = started.data as CrewSearchResult;
+      setCrew({
+        forkliftCount: found.forkliftCount,
+        waitMeanMaxSec: found.waitMeanMaxSec,
+        tried: found.tried,
+      });
+      note("已按等待对照完叉车台数。");
+    } catch (error) {
+      const raw = error instanceof Error ? error.message : "";
+      setCrew(null);
+      note(humanRefusal(raw) ? raw : `${copy.simFail} ${raw}`);
     } finally {
       setBusy(false);
     }
@@ -884,6 +976,10 @@ export function Workbench() {
               onToggleSpec={(id, checked) => setSpecOn((current) => ({ ...current, [id]: checked }))}
               onAudit={onAudit}
               onFix={onFix}
+              onSearch={() => void onSearch()}
+              searchBusy={busy}
+              crew={crew}
+              onApplyCount={(count) => setScenario((current) => ({ ...current, forklifts: String(count) }))}
             />
             <PreparePanel
               busy={busy}

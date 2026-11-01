@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { copy } from "../copy";
-import { formatP95, formatRate, formatThroughput, formatWait } from "./format.js";
+import { formatP95, formatRate, formatThroughput, formatWait, runReport } from "./format.js";
 
 type UtilRow = { resourceType?: string; resourceId?: string; utilization?: number | null; resourceCount?: number };
 type Bottle = { entityId?: string; waitSec?: number; share?: number };
@@ -51,6 +51,19 @@ export function RunCards({
   const hasConveyorReplay = replaySegments.some((segment) => segment.mode === "conveyor");
   const banner = rejected || (showCards ? null : idleNotice || copy.notRun);
   const bannerClass = rejected || (banner && banner.startsWith(copy.unsimulated)) ? "rejected" : "decision-idle";
+  const [report, setReport] = useState("");
+  function onReport() {
+    if (!run || !showCards) return;
+    const text = runReport(run);
+    setReport(text);
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "run-report.txt";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
   return (
     <section className="decision" id="decisionView" data-decision-cards={showCards ? "shown" : "hidden"}>
       <div className="decision-top">
@@ -62,7 +75,15 @@ export function RunCards({
           <button className="ghost-btn" type="button" onClick={onBack}>
             返回编辑
           </button>
-          <button className="ghost-btn" type="button" disabled title={copy.report}>
+          <button
+            className="ghost-btn"
+            type="button"
+            id="runReport"
+            data-run-report={showCards ? "ready" : "idle"}
+            disabled={!showCards}
+            title={showCards ? "转写这一次运行的四卡" : copy.report}
+            onClick={onReport}
+          >
             仿真报告
           </button>
           <button className="ghost-btn" type="button" disabled title="本切片不导出设备清单">
@@ -75,6 +96,11 @@ export function RunCards({
       </div>
       {banner ? <div className={bannerClass}>{banner}</div> : null}
       {showCards && stale ? <div className="stale-banner">{stale}</div> : null}
+      {showCards && report ? (
+        <pre className="run-report" id="runReportText">
+          {report}
+        </pre>
+      ) : null}
       {showCards ? <div className="kpis">
         <article className="kpi">
           <div className="kpi-label">{copy.cards.throughput}</div>

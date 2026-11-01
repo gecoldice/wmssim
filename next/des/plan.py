@@ -11,8 +11,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List
 
+from des.engine import run_des
 from des.errors import DesError
 from des.gold import run_fixture
+
+MAX_FORKLIFT_COUNT = 8
 
 PLAN = Path(__file__).resolve().parents[1] / "fixtures" / "plan"
 
@@ -33,24 +36,97 @@ def with_forklift_count(fixture: Dict[str, Any], count: int) -> Dict[str, Any]:
     return clone
 
 
-def smallest_forklift_count(fixture: Dict[str, Any], *, wait_mean_max: float, max_count: int) -> Dict[str, Any]:
+def _record(result: Dict[str, Any], count: int) -> Dict[str, Any]:
+    if result.get("kpiFromUiDemo") is not False:
+        raise DesError("COMPUTATION_FAILED", "kpiFromUiDemo 必须为 false")
+    wait = (result.get("cards") or {}).get("wait") or {}
+    return {
+        "forkliftCount": count,
+        "waitMeanSec": wait.get("meanSec"),
+        "waitP95Sec": wait.get("p95Sec"),
+    }
+
+
+def _finish(tried: List[Dict[str, Any]], count: int, wait_mean_max: float) -> Dict[str, Any]:
+    return {
+        "forkliftCount": count,
+        "waitMeanMaxSec": wait_mean_max,
+        "tried": tried,
+        "kpiFromUiDemo": False,
+    }
+
+
+def _check_limits(wait_mean_max: float, max_count: int) -> None:
+    if wait_mean_max < 0:
+        raise DesError("INPUT_UNCONFIRMED", "等待均值上限不能为负", {"waitMeanMaxSec": wait_mean_max})
     if max_count < 1:
         raise DesError("INPUT_UNCONFIRMED", "叉车搜索上限至少是 1", {"maxCount": max_count})
+    if max_count > MAX_FORKLIFT_COUNT:
+        raise DesError("INPUT_UNCONFIRMED", "叉车搜索上限最多 8 台", {"maxCount": max_count})
+
+
+def with_pool_count(operating: Dict[str, Any], count: int) -> Dict[str, Any]:
+    clone = deepcopy(operating)
+    pools = list(clone.get("resourcePools") or [])
+    found = False
+    for pool in pools:
+        if pool.get("resourceType") == "forklift":
+            pool["count"] = count
+            found = True
+    if not found:
+        raise DesError("NO_RESOURCES", "至少需要 1 台叉车作为样板", {"resourceType": "forklift"})
+    clone["resourcePools"] = pools
+    return clone
+
+
+def smallest_pool_count(
+    snapshot: Dict[str, Any],
+    demand: Dict[str, Any],
+    operating: Dict[str, Any],
+    run_control: Dict[str, Any],
+    expected_revision: str,
+    *,
+    wait_mean_max: float,
+    max_count: int,
+) -> Dict[str, Any]:
+    """Same search as the direct gold, using a forklift pool instead of a resource list."""
+    _check_limits(wait_mean_max, max_count)
+    kinds = [str(flow.get("flowKind") or "") for flow in (demand.get("flows") or [])]
+    if not any(kind in {"", "full_pallet", "break_bulk"} for kind in kinds):
+        raise DesError("INPUT_UNCONFIRMED", "这个搜索只看整托和拆托的叉车等待", {"flowKind": kinds})
+    if not any(pool.get("resourceType") == "forklift" for pool in (operating.get("resourcePools") or [])):
+        raise DesError("NO_RESOURCES", "至少需要 1 台叉车作为样板", {"resourceType": "forklift"})
     tried: List[Dict[str, Any]] = []
     for count in range(1, max_count + 1):
-        result = run_fixture(with_forklift_count(fixture, count))
-        if result.get("kpiFromUiDemo") is not False:
-            raise DesError("COMPUTATION_FAILED", "kpiFromUiDemo 必须为 false")
-        mean = (result.get("cards") or {}).get("wait", {}).get("meanSec")
-        p95 = (result.get("cards") or {}).get("wait", {}).get("p95Sec")
-        tried.append({"forkliftCount": count, "waitMeanSec": mean, "waitP95Sec": p95})
+        result = run_des(
+            snapshot=snapshot,
+            demand=demand,
+            operating=with_pool_count(operating, count),
+            run_control=run_control,
+            expected_layout_revision=expected_revision,
+            run_id=f"run-forklift-count-{count}",
+        )
+        row = _record(result, count)
+        tried.append(row)
+        mean = row["waitMeanSec"]
         if mean is not None and float(mean) <= float(wait_mean_max) + 1e-9:
-            return {
-                "forkliftCount": count,
-                "waitMeanMaxSec": wait_mean_max,
-                "tried": tried,
-                "kpiFromUiDemo": False,
-            }
+            return _finish(tried, count, wait_mean_max)
+    raise DesError(
+        "INPUT_UNCONFIRMED",
+        "加到上限等待仍超过目标",
+        {"tried": tried, "waitMeanMaxSec": wait_mean_max, "maxCount": max_count},
+    )
+
+
+def smallest_forklift_count(fixture: Dict[str, Any], *, wait_mean_max: float, max_count: int) -> Dict[str, Any]:
+    _check_limits(wait_mean_max, max_count)
+    tried: List[Dict[str, Any]] = []
+    for count in range(1, max_count + 1):
+        row = _record(run_fixture(with_forklift_count(fixture, count)), count)
+        tried.append(row)
+        mean = row["waitMeanSec"]
+        if mean is not None and float(mean) <= float(wait_mean_max) + 1e-9:
+            return _finish(tried, count, wait_mean_max)
     raise DesError(
         "INPUT_UNCONFIRMED",
         "加到上限等待仍超过目标",
@@ -72,11 +148,21 @@ def evaluate(fixture: Dict[str, Any]) -> List[str]:
     if measured.get("kpiAcAllGreen") is not False:
         problems.append("measured.kpiAcAllGreen 必须显式为 false")
     try:
-        found = smallest_forklift_count(
-            fixture,
+        limits = dict(
             wait_mean_max=float(expected["waitMeanMaxSec"]),
             max_count=int(expected["maxCount"]),
         )
+        if fixture.get("demand"):
+            found = smallest_pool_count(
+                fixture["layoutSnapshot"],
+                fixture["demand"],
+                fixture["operating"],
+                fixture["runControl"],
+                fixture["layoutSnapshot"]["layoutRevision"],
+                **limits,
+            )
+        else:
+            found = smallest_forklift_count(fixture, **limits)
     except DesError as exc:
         if expected.get("mustReject"):
             if exc.code != expected.get("rejectReasonCode"):
@@ -92,6 +178,9 @@ def evaluate(fixture: Dict[str, Any]) -> List[str]:
         return problems
     if found.get("kpiFromUiDemo") is not False:
         problems.append("kpiFromUiDemo 不是 false")
+    blob = json.dumps(found, ensure_ascii=False)
+    if "price" in blob.lower() or "元" in blob or "报价" in blob:
+        problems.append("结果里出现了价格")
     if found.get("forkliftCount") != expected.get("forkliftCount"):
         problems.append(f"叉车数 {found.get('forkliftCount')}，期望 {expected.get('forkliftCount')}")
     tried = found.get("tried") or []

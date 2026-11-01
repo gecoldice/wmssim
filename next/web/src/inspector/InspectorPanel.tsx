@@ -1,8 +1,15 @@
 import { copy } from "../copy";
 import { isRuntimeConveyor } from "../library/catalog";
 import { SPEC_PACKS, type NormFinding, type NormPhase, type SpecPackId } from "../prepare/norms";
+import { formatNumber, formatP95, formatWait } from "../run-cards/format.js";
 import type { Draft, PoseEl, ScenarioFields } from "../workbench/draft";
 import { conveyorLinks, parseNum, portsLinked } from "../workbench/draft";
+
+export type CrewSearchResult = {
+  forkliftCount: number;
+  waitMeanMaxSec: number;
+  tried: Array<{ forkliftCount: number; waitMeanSec: number | null; waitP95Sec: number | null }>;
+};
 
 type Check = { status?: string; message?: string; objectIds?: string[]; ruleId?: string };
 
@@ -26,6 +33,10 @@ type Props = {
   onToggleSpec: (id: SpecPackId, checked: boolean) => void;
   onAudit: () => void;
   onFix: (finding: NormFinding) => void;
+  onSearch?: () => void;
+  searchBusy?: boolean;
+  crew?: CrewSearchResult | null;
+  onApplyCount?: (count: number) => void;
 };
 
 export function InspectorPanel({
@@ -48,6 +59,10 @@ export function InspectorPanel({
   onToggleSpec,
   onAudit,
   onFix,
+  onSearch,
+  searchBusy,
+  crew,
+  onApplyCount,
 }: Props) {
   const fails = checks.filter((check) => check.status === "fail");
   return (
@@ -281,6 +296,43 @@ export function InspectorPanel({
             placeholder={copy.missing}
             onChange={(value) => onField({ windowSec: value })}
           />
+          <div className="two-fields">
+            <NumberField
+              label="等待均值上限"
+              unit="秒"
+              inputId="waitMeanMax"
+              value={fields.waitMeanMax}
+              placeholder={copy.missing}
+              onChange={(value) => onField({ waitMeanMax: value })}
+            />
+            <NumberField
+              label="最多试几台"
+              unit="台"
+              inputId="maxForklifts"
+              value={fields.maxForklifts}
+              placeholder={copy.missing}
+              onChange={(value) => onField({ maxForklifts: value })}
+            />
+          </div>
+          <button className="ghost-btn" id="forkliftCountSearch" type="button" disabled={searchBusy} onClick={() => onSearch?.()}>
+            按等待找最少叉车
+          </button>
+          <p className="inspector-empty">这是台数对照，不是报价。</p>
+          {crew ? (
+            <div className="crew-result" id="crewTried">
+              {crew.tried.map((row) => (
+                <div key={row.forkliftCount}>
+                  {row.forkliftCount} 台：等待均值 {formatWait(row.waitMeanSec)} 秒，P95 {formatP95(row.waitP95Sec)} 秒
+                </div>
+              ))}
+              <p>
+                {crew.forkliftCount} 台时，等待均值不超过 {formatNumber(crew.waitMeanMaxSec)} 秒。
+              </p>
+              <button className="ghost-btn" type="button" onClick={() => onApplyCount?.(crew.forkliftCount)}>
+                把叉车数量改成 {crew.forkliftCount}
+              </button>
+            </div>
+          ) : null}
         </section>
         <section className="panel-section">
           <details open>

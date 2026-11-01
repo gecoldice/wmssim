@@ -1,0 +1,98 @@
+{
+  "fixtureId": "G-PLAN-04",
+  "title": "工况搜索上限只有一台时，等不及就拒绝",
+  "schemaVersion": "0.2",
+  "engineTarget": "slice-des-0.1+",
+  "status": "measured_pass",
+  "note": "和 G-PLAN-03 同一条通道、同一窗口。上限是 1 台，一台的等待均值是 12.5 秒，目标是 0，所以拒绝。",
+  "layoutSnapshot": {
+    "schemaVersion": "0.2",
+    "layoutId": "mini_plan_04",
+    "layoutRevision": "plan_rev_g04",
+    "coord": { "origin": "SW", "unit": "m" },
+    "elements": [
+      { "elementId": "N_home", "kind": "node", "pose": { "x": 0, "y": 0 } },
+      { "elementId": "N_slot", "kind": "node", "pose": { "x": 10, "y": 0 } },
+      { "elementId": "N_ship", "kind": "node", "pose": { "x": 20, "y": 0 } },
+      {
+        "elementId": "SLOT_A",
+        "kind": "slot",
+        "pose": { "x": 10, "y": 2 },
+        "accessNodeId": "N_slot",
+        "capacityPallets": 2
+      },
+      {
+        "elementId": "DOCK_SHIP",
+        "kind": "dock",
+        "pose": { "x": 20, "y": 2 },
+        "accessNodeId": "N_ship",
+        "labels": ["ship"]
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "E_home_slot",
+        "from": "N_home",
+        "to": "N_slot",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      },
+      {
+        "edgeId": "E_slot_ship",
+        "from": "N_slot",
+        "to": "N_ship",
+        "lengthM": 10,
+        "bidirectional": true,
+        "widthM": 4,
+        "maxConcurrent": 2,
+        "speedFactor": 1
+      }
+    ]
+  },
+  "demand": {
+    "flows": [
+      {
+        "flowKind": "full_pallet",
+        "intent": "outbound",
+        "quantity": 2,
+        "unit": "pallet",
+        "source": "storage"
+      }
+    ],
+    "initialInventory": [
+      { "locationInstanceId": "SLOT_A", "quantity": 2, "unit": "pallet" }
+    ],
+    "arrivalProfile": { "windowSec": 20 }
+  },
+  "operating": {
+    "resourcePools": [
+      { "id": "pool-forklift", "resourceType": "forklift", "count": 1 }
+    ],
+    "serviceParameters": {
+      "travelSpeedMps": 1,
+      "emptySpeedMps": 1,
+      "processSec": { "pick": 10, "ship": 5 }
+    }
+  },
+  "runControl": {
+    "horizonSec": 600,
+    "seedStreams": { "demand": 7 },
+    "metricDefinitionVersion": "metrics-slice-manual-v1"
+  },
+  "expected": {
+    "mustReject": true,
+    "waitMeanMaxSec": 0,
+    "maxCount": 1,
+    "rejectReasonCode": "INPUT_UNCONFIRMED",
+    "rejectMessageContains": "加到上限等待仍超过目标",
+    "kpiHonesty": "等不及就拒绝 ≠ 报价"
+  },
+  "measured": {
+    "scope": "this_fixture_only",
+    "kpiAcAllGreen": false,
+    "runner": "next/scripts/run_plan.py"
+  }
+}

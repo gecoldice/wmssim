@@ -19,10 +19,11 @@
 | POST | `/layouts/{id}/prepare-jobs` | 派生并权威校验 |
 | GET | `/jobs/{id}` | 准备或推演状态 |
 | POST | `/simulation-jobs` | 绑定布局修订与场景。未准备通过则 409 |
+| POST | `/forklift-count-jobs` | 同步返回满足等待均值的最少叉车台数。未准备通过则 409 |
 | GET | `/runs/{id}` | 清单、四卡、事件、轨迹、`layoutRevision` |
 | GET | `/health` | 存活探测。`planning` 为 false |
 
-没有规划、采用、价目、成本、比较、识图。
+没有采用、价目、成本、布局比较、识图。健康检查里的 `planning` 仍是 false。
 
 `full_pallet` 与 `break_bulk` 可以推演。单独的 `piece_pick` 让作业失败（`UNSUPPORTED_SCENARIO`），不写入 run。拆托下游的小件只生成箱任务。四卡形状以 `schemas/slice/run-result.schema.json` 为准：利用率只有 `byResourceType` 与 `byResource`，没有无类型的 `value`。`kpiFromUiDemo` 固定为 false。没有成功的本次运行时，决策页不渲染主四卡。
 
