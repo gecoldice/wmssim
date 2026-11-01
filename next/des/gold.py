@@ -290,7 +290,8 @@ def _path_nodes(result: Dict[str, Any], task_id: str) -> List[str]:
 
 
 def _check_motion(fixture: Dict[str, Any], result: Dict[str, Any], problems: List[str]) -> None:
-    if not str(fixture.get("fixtureId", "")).startswith(("G-WAY", "G-TURN")):
+    fixture_id = str(fixture.get("fixtureId", ""))
+    if not fixture_id.startswith(("G-WAY", "G-TURN", "G-AGV")):
         return
     expected = fixture["expected"]
     cards = result["cards"]
@@ -298,8 +299,17 @@ def _check_motion(fixture: Dict[str, Any], result: Dict[str, Any], problems: Lis
     _near(cards["wait"]["p95Sec"], expected["waitP95Sec"], "等待 P95", problems)
     _near(cards["throughput"]["value"], expected["throughput"], "吞吐", problems)
     _near(cards["throughput"]["outboundPalletEq"], expected["palletEq"], "托当量", problems)
-    busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "forklift")
-    _near(busy, expected["forkliftBusySec"], "叉车占用秒", problems)
+    if fixture_id.startswith("G-AGV"):
+        types = [row["resourceType"] for row in result["resources"]]
+        if "agv" not in types:
+            problems.append(f"资源类型 {types}，期望含 agv")
+        if "forklift" in types:
+            problems.append(f"资源类型 {types}，不应含 forklift")
+        busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "agv")
+        _near(busy, expected["agvBusySec"], "AGV 占用秒", problems)
+    else:
+        busy = sum(float(row["busySec"]) for row in result["resources"] if row["resourceType"] == "forklift")
+        _near(busy, expected["forkliftBusySec"], "叉车占用秒", problems)
     task_id = expected.get("taskId") or "T1"
     nodes = _path_nodes(result, task_id)
     if nodes != expected.get("pathNodes"):

@@ -113,7 +113,6 @@ const ROUTED_CONVEYOR = new Set([
 ]);
 
 const UNSIMULATED_EXACT = new Set([
-  "MH-AGV-01",
   "MH-CHG-01",
   "MH-WAIT-01",
   "MH-CRANE-01",

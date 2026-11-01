@@ -38,8 +38,8 @@
     },
     {
       "caseId": "R5_agv_required",
-      "title": "布局含 MH-AGV 且任务依赖",
-      "assert": "未接类型拒跑；行为与 PR#5 一致"
+      "title": "任务依赖 AGV 但没有 AGV 资源",
+      "assert": "拒载：至少需要 1 台 AGV；不是因为类型未仿真"
     },
     {
       "caseId": "R6_revision_mismatch",

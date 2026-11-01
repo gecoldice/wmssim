@@ -33,7 +33,7 @@ for (const id of ["CV-CURVE-01", "CV-MERGE-01", "CV-DIV-01", "CV-BUF-01"]) {
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
 }
-for (const id of ["CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01", "MH-AGV-01", "ST-ASRS-01", "PK-DEPAL-AUTO-01"]) {
+for (const id of ["CV-VERT-01", "CV-CHUTE-01", "CV-LOOP-01", "CV-INDUCT-EACH-01", "MH-CRANE-01", "ST-ASRS-01", "PK-DEPAL-AUTO-01"]) {
   if (!isUnsimulated(id)) throw new Error(`${id} should stay out of the DES`);
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
@@ -43,9 +43,9 @@ for (const id of ["CV-STR-01", "CV-ROL-01", "CV-BELT-01"]) {
   const item = catalog.find((row) => row.id === id);
   if (!item?.placeable) throw new Error(`${id} must still be draggable`);
 }
-if (isUnsimulated("ST-PAL-01") || isUnsimulated("IN-DOCK-01")) throw new Error("manual types marked unsimulated");
-const blocked = unsimulatedMessage(["CV-VERT-01", "MH-AGV-01", "ST-ASRS-01"]);
-if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-VERT-01") || blocked.includes("CV-CURVE-01") || blocked.includes("CV-STR-01") || blocked.includes("即将")) {
+if (isUnsimulated("ST-PAL-01") || isUnsimulated("IN-DOCK-01") || isUnsimulated("MH-AGV-01")) throw new Error("manual types marked unsimulated");
+const blocked = unsimulatedMessage(["CV-VERT-01", "MH-CRANE-01", "ST-ASRS-01"]);
+if (!blocked.startsWith(copy.unsimulated) || !blocked.includes("CV-VERT-01") || !blocked.includes("MH-CRANE-01") || blocked.includes("MH-AGV-01") || blocked.includes("CV-CURVE-01") || blocked.includes("CV-STR-01") || blocked.includes("即将")) {
   throw new Error(blocked);
 }
 if (copy.conveyorIdleNote.includes("已接入")) throw new Error("curve note implies the runtime is connected");
@@ -415,6 +415,7 @@ function inspectorHtml(selected, elements) {
         shiftHours: "",
         forklifts: "",
         pickers: "",
+        agvCount: "",
         travel: "",
         emptySpeed: "",
         pickSec: "",
@@ -498,6 +499,16 @@ const operating = buildOperating(testScenario());
 if (operating.serviceParameters.turningRadiusM !== undefined) throw new Error("blank radius was sent");
 const turned = buildOperating({ ...testScenario(), turnRadius: "1.5" });
 if (turned.serviceParameters.turningRadiusM !== 1.5) throw new Error(`radius ${turned.serviceParameters.turningRadiusM}`);
+if (operating.resourcePools.some((pool) => pool.resourceType === "agv")) throw new Error("blank AGV count added a pool");
+const withAgv = buildOperating({ ...testScenario(), agvCount: "2" });
+const agvPool = withAgv.resourcePools.find((pool) => pool.resourceType === "agv");
+if (!agvPool || agvPool.count !== 2 || agvPool.id !== "pool-agv") throw new Error(`agv pool ${JSON.stringify(agvPool)}`);
+if (!withAgv.resourcePools.some((pool) => pool.resourceType === "forklift")) throw new Error("AGV count dropped the forklift pool");
+const agvDrop = elementFromDrop(draft.elements, "MH-AGV-01", 4, 4, null);
+const agvHtml = inspectorHtml(agvDrop, [...draft.elements, agvDrop]);
+if (!agvHtml.includes("AGV 数量") || !agvHtml.includes("只是摆在图上") || !straightHtml.includes("留空不带车")) {
+  throw new Error("inspector hid the AGV count note");
+}
 if (!straightHtml.includes("转向半径") || !straightHtml.includes("单向，只从起点开往终点")) {
   throw new Error("inspector hid turn radius or one-way");
 }

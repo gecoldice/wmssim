@@ -3,8 +3,10 @@
 Straight, curve, divert and buffer conveyors travel at speed_mpm/60
 metres per second when their ports are linked. A merge holds one load.
 A buffer holds capacity_slots loads; a full segment makes the next load wait.
-Vertical, chute, loop, induct, AGV and ASRS still refuse before the
-scheduler, so they do not emit cards.
+Vertical, chute, loop, induct and ASRS still refuse before the
+scheduler, so they do not emit cards. An AGV uses the same aisle as a
+forklift when a task sets carrier to agv and the scenario has an AGV.
+A task that depends on an AGV with no vehicle refuses before the scheduler.
 
 full_pallet: arrival, resource wait, empty travel, pick, loaded travel, ship.
 break_bulk: deliver a pallet to a break_bulk station slot, process, convert
@@ -94,6 +96,7 @@ class _Task:
     handoff_ready: float = 0.0
     reserved: bool = False
     conv_pulled: bool = False
+    carrier: str = ""
 
 
 @dataclass
@@ -153,6 +156,7 @@ class DesEngine:
         self.event_counter = 0
         self.forklift_pool = ""
         self.picker_pool = ""
+        self.agv_pool = ""
         self.piece_sec: Optional[float] = None
         self.edge_gates: Dict[str, _Gate] = {}
         self.station_gates: Dict[str, _Gate] = {}
@@ -342,13 +346,22 @@ class DesEngine:
             raise DesError("NO_ACCESS_NODE", f"{dest.get('elementId')} 缺有效 accessNodeId", {"elementId": dest.get("elementId")})
         return dest
 
+    def _needs_agv(self) -> bool:
+        if self.direct is None:
+            return False
+        for task in self.direct.get("tasks") or []:
+            if task.get("dependsOn") or str(task.get("carrier") or "") == "agv":
+                return True
+        return False
+
     def _needs_forklift(self) -> bool:
         if self.direct is not None:
             if direct_is_pure_conveyor(self.direct):
                 return False
             for task in self.direct.get("tasks") or []:
                 kind = str(task.get("flowKind") or "full_pallet")
-                if kind != "piece_pick":
+                carrier = str(task.get("carrier") or "")
+                if kind != "piece_pick" and carrier != "agv":
                     return True
             return False
         kinds = set(self._flow_kinds())
@@ -401,6 +414,10 @@ class DesEngine:
             self.picker_pool = self.picker_pool or "pool-picker"
             self.queues.setdefault(self.picker_pool, [])
             return self.picker_pool
+        if kind == "agv":
+            self.agv_pool = self.agv_pool or "pool-agv"
+            self.queues.setdefault(self.agv_pool, [])
+            return self.agv_pool
         self.forklift_pool = self.forklift_pool or "pool-forklift"
         self.queues.setdefault(self.forklift_pool, [])
         return self.forklift_pool
@@ -413,7 +430,7 @@ class DesEngine:
                 if home not in self.nodes:
                     raise DesError("INPUT_UNCONFIRMED", f"资源停靠节点不存在：{home}", {"nodeId": home})
                 kind = spec.get("kind") or spec.get("resourceType") or "forklift"
-                if kind not in {"forklift", "picker"}:
+                if kind not in {"forklift", "picker", "agv"}:
                     raise DesError("UNSUPPORTED_SCENARIO", f"本切片不支持资源类型 {kind}", {"resourceType": kind})
                 self.resources.append(
                     _Res(
@@ -426,6 +443,8 @@ class DesEngine:
                         turning_radius_m=self._optional_radius(spec.get("turningRadiusM")),
                     )
                 )
+            if self._needs_agv() and not any(r.resource_type == "agv" for r in self.resources):
+                raise DesError("NO_RESOURCES", "至少需要 1 台 AGV", {"resourceType": "agv"})
             if self._needs_forklift() and not any(r.resource_type == "forklift" for r in self.resources):
                 if not direct_is_pure_conveyor(self.direct):
                     raise DesError("NO_RESOURCES", "至少需要 1 台叉车", {"resourceType": "forklift"})
@@ -439,7 +458,7 @@ class DesEngine:
             raise DesError("INPUT_UNCONFIRMED", "快照没有资源可以停靠的节点")
         for pool in self.operating.get("resourcePools") or []:
             rtype = pool.get("resourceType") or ""
-            if rtype not in {"forklift", "picker"}:
+            if rtype not in {"forklift", "picker", "agv"}:
                 raise DesError(
                     "UNSUPPORTED_SCENARIO",
                     f"本切片不支持资源类型 {rtype}",
@@ -452,6 +471,8 @@ class DesEngine:
                 self.forklift_pool = pool_id
             if rtype == "picker":
                 self.picker_pool = pool_id
+            if rtype == "agv":
+                self.agv_pool = pool_id
             for i in range(count):
                 self.resources.append(
                     _Res(
@@ -676,6 +697,7 @@ class DesEngine:
                         origin_node=origin["accessNodeId"],
                         dest_node=dest["accessNodeId"],
                         flow_kind="piece_pick",
+                        carrier=str(spec.get("carrier") or ""),
                     )
                 )
                 continue
@@ -697,6 +719,7 @@ class DesEngine:
                         dest_node=dest["accessNodeId"],
                         station_id=dest["elementId"],
                         flow_kind="break_bulk",
+                        carrier=str(spec.get("carrier") or ""),
                     )
                 )
                 continue
@@ -713,6 +736,7 @@ class DesEngine:
                     dest_node=dest["accessNodeId"],
                     dock_id=dest["elementId"] if dest.get("kind") == "dock" else None,
                     flow_kind="full_pallet",
+                    carrier=str(spec.get("carrier") or ""),
                 )
             )
 
@@ -1159,7 +1183,12 @@ class DesEngine:
             self._convey_request(task)
             return
         task.status = "queued"
-        pool = self.picker_pool if task.direction == "piece_pick" else self.forklift_pool
+        if task.direction == "piece_pick":
+            pool = self.picker_pool
+        elif task.carrier == "agv":
+            pool = self.agv_pool
+        else:
+            pool = self.forklift_pool
         if not pool or pool not in self.queues:
             self._fail(task, "NO_RESOURCES", f"{task.task_id} 没有可用资源")
             return
@@ -1316,12 +1345,17 @@ class DesEngine:
 
     def _reject_if_unlinked(self) -> None:
         """Stop at load when this workload has no aisle path or cannot turn. No events, no cards."""
-        if not self._homes("forklift") and not self._homes("picker"):
+        if not self._homes("forklift") and not self._homes("picker") and not self._homes("agv"):
             return
         for task in self.tasks.values():
             if task.path_mode in {"conveyor", "conveyor_then_access"}:
                 continue
-            kind = "picker" if task.direction == "piece_pick" else "forklift"
+            if task.direction == "piece_pick":
+                kind = "picker"
+            elif task.carrier == "agv":
+                kind = "agv"
+            else:
+                kind = "forklift"
             crew = self._crew(kind)
             if not crew:
                 continue
