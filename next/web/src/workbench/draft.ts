@@ -58,6 +58,10 @@ export type Draft = {
   aisleFromX: string;
   aisleToX: string;
   aisleY: string;
+  /** Travel only from the start of the centerline toward the end. */
+  aisleOneWay: boolean;
+  aisleElbowX: string;
+  aisleElbowY: string;
   elements: PoseEl[];
 };
 
@@ -78,6 +82,7 @@ export type ScenarioFields = {
   pieceSec: string;
   caseQty: string;
   casesPerPallet: string;
+  turnRadius: string;
 };
 
 const EVIDENCE = {
@@ -99,9 +104,13 @@ export function siteDefaults(): Pick<Draft, "widthM" | "heightM" | "aisleWidthM"
   };
 }
 
+export function aisleFlags(): Pick<Draft, "aisleOneWay" | "aisleElbowX" | "aisleElbowY"> {
+  return { aisleOneWay: false, aisleElbowX: "", aisleElbowY: "" };
+}
+
 export function draftFor(mode: "blank" | "rectangle" | "mixed"): Draft {
   if (mode === "mixed") return mixedWarehouse();
-  return { templateId: null, ...siteDefaults(), elements: [] };
+  return { templateId: null, ...siteDefaults(), ...aisleFlags(), elements: [] };
 }
 
 function shell(partial: Omit<PoseEl, "accessNodeId" | "accessX" | "accessY">): PoseEl {
@@ -145,6 +154,7 @@ function mixedWarehouse(): Draft {
   const draft: Draft = {
     templateId: MIXED_TEMPLATE_ID,
     ...siteDefaults(),
+    ...aisleFlags(),
     elements: [
       fromCatalog("dock-in", "IN-DOCK-01", 4, 12),
       fromCatalog("dock-out", "OUT-DOCK-01", 36, 12),
@@ -175,13 +185,21 @@ export function columnsFor(draft: Draft): ColumnMark[] {
   });
 }
 
+export function aisleElbow(draft: Draft): { x: number; y: number } | null {
+  const x = parseNum(draft.aisleElbowX);
+  const y = parseNum(draft.aisleElbowY);
+  if (x === null || y === null) return null;
+  return { x, y };
+}
+
 export function aisleOf(draft: Draft): AisleLine | null {
   const fromX = parseNum(draft.aisleFromX);
   const toX = parseNum(draft.aisleToX);
   const y = parseNum(draft.aisleY);
   const widthM = parseNum(draft.aisleWidthM);
   if (fromX === null || toX === null || y === null || widthM === null) return null;
-  return { fromX, toX, y, widthM };
+  const elbow = aisleElbow(draft);
+  return elbow ? { fromX, toX, y, widthM, elbowX: elbow.x, elbowY: elbow.y } : { fromX, toX, y, widthM };
 }
 
 export type ConveyorLink = {
@@ -409,6 +427,7 @@ export function emptyScenario(): ScenarioFields {
     pieceSec: "",
     caseQty: "",
     casesPerPallet: "",
+    turnRadius: "",
   };
 }
 
@@ -430,6 +449,7 @@ export function testScenario(): ScenarioFields {
     pieceSec: "",
     caseQty: "",
     casesPerPallet: "",
+    turnRadius: "",
   };
 }
 
@@ -615,16 +635,25 @@ export function buildLayout(draft: Draft, id: string, revision: string, facility
   const toX = parseNum(draft.aisleToX);
   const y = parseNum(draft.aisleY);
   const width = parseNum(draft.aisleWidthM);
+  const elbowX = parseNum(draft.aisleElbowX);
+  const elbowY = parseNum(draft.aisleElbowY);
+  if ((elbowX === null) !== (elbowY === null)) throw new Error("折点要同时填东向和北向");
+  const centerline =
+    fromX !== null && toX !== null && y !== null
+      ? [
+          { x: fromX, y },
+          ...(elbowX !== null && elbowY !== null ? [{ x: elbowX, y: elbowY }] : []),
+          { x: toX, y },
+        ]
+      : [];
   const aisles =
-    fromX !== null && toX !== null && y !== null && width !== null
+    centerline.length >= 2 && width !== null
       ? [
           {
             id: "aisle-main",
-            centerline: [
-              { x: fromX, y },
-              { x: toX, y },
-            ],
+            centerline,
             widthM: width,
+            ...(draft.aisleOneWay ? { oneWay: true } : {}),
           },
         ]
       : [];
@@ -720,6 +749,7 @@ export function buildOperating(fields: ScenarioFields) {
   const shipSec = parseNum(fields.shipSec);
   const pieceSec = parseNum(fields.pieceSec);
   const casesPerPallet = parseNum(fields.casesPerPallet);
+  const turnRadius = parseNum(fields.turnRadius);
   if (
     horizonH === null ||
     forklifts === null ||
@@ -766,6 +796,7 @@ export function buildOperating(fields: ScenarioFields) {
         ...(pieceSec !== null && pieceSec > 0 ? { piece_pick: pieceSec } : {}),
       },
       ...(casesPerPallet !== null && casesPerPallet > 0 ? { casesPerPallet } : {}),
+      ...(turnRadius !== null && turnRadius > 0 ? { turningRadiusM: turnRadius } : {}),
       paramsSource: "workbench-input",
     },
     routingPolicy: { kind: "shortest_path" },

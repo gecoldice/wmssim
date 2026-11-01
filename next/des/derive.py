@@ -136,7 +136,8 @@ def _split_edge_at(
                     "from": src,
                     "to": dst,
                     "lengthM": round(length, 6),
-                    "bidirectional": True,
+                    "bidirectional": bool(edge.get("bidirectional", True)),
+                    "widthM": float(edge.get("widthM") or 0),
                     "maxConcurrent": int(edge.get("maxConcurrent") or 2),
                     "speedFactor": float(edge.get("speedFactor") or 1),
                 }
@@ -199,7 +200,8 @@ def derive_snapshot(
                     "from": ids[i],
                     "to": ids[i + 1],
                     "lengthM": round(length, 6),
-                    "bidirectional": True,
+                    "bidirectional": not bool(aisle.get("oneWay")),
+                    "widthM": float(aisle.get("widthM") or 0),
                     "maxConcurrent": 2,
                     "speedFactor": 1,
                 }

@@ -190,6 +190,9 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
   const aisleFrom = Number(draft.aisleFromX);
   const aisleTo = Number(draft.aisleToX);
   const aisleW = Number(draft.aisleWidthM);
+  const elbowX = Number(draft.aisleElbowX);
+  const elbowY = Number(draft.aisleElbowY);
+  const elbow = draft.aisleElbowX.trim() !== "" && draft.aisleElbowY.trim() !== "" && Number.isFinite(elbowX) && Number.isFinite(elbowY);
   const showAisle = Number.isFinite(aisleY) && Number.isFinite(aisleFrom) && Number.isFinite(aisleTo);
   const barM = sized && width >= 20 ? 5 : 2;
   const lane = sized ? fireLaneInside(width, height) : null;
@@ -259,7 +262,7 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                   />
                 ))
               : null}
-            {sized && showAisle ? (
+            {sized && showAisle && !elbow ? (
               <g>
                 <rect
                   x={Math.min(aisleFrom, aisleTo)}
@@ -273,6 +276,44 @@ export const LayoutCanvas = forwardRef<CanvasHandle, Props>(function LayoutCanva
                 <line
                   x1={aisleFrom}
                   y1={aisleY}
+                  x2={aisleTo}
+                  y2={aisleY}
+                  stroke="#a8c7c1"
+                  strokeWidth={1.2 / cam.ppm}
+                  strokeDasharray={`${0.45} ${0.35}`}
+                />
+              </g>
+            ) : null}
+            {sized && showAisle && elbow ? (
+              <g>
+                <line
+                  x1={aisleFrom}
+                  y1={aisleY}
+                  x2={elbowX}
+                  y2={elbowY}
+                  stroke={aisleAlert ? "#ce5d50" : "#d0dcda"}
+                  strokeWidth={(Number.isFinite(aisleW) ? aisleW : 3)}
+                />
+                <line
+                  x1={elbowX}
+                  y1={elbowY}
+                  x2={aisleTo}
+                  y2={aisleY}
+                  stroke={aisleAlert ? "#ce5d50" : "#d0dcda"}
+                  strokeWidth={(Number.isFinite(aisleW) ? aisleW : 3)}
+                />
+                <line
+                  x1={aisleFrom}
+                  y1={aisleY}
+                  x2={elbowX}
+                  y2={elbowY}
+                  stroke="#a8c7c1"
+                  strokeWidth={1.2 / cam.ppm}
+                  strokeDasharray={`${0.45} ${0.35}`}
+                />
+                <line
+                  x1={elbowX}
+                  y1={elbowY}
                   x2={aisleTo}
                   y2={aisleY}
                   stroke="#a8c7c1"

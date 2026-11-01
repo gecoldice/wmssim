@@ -43,6 +43,8 @@ export type AisleLine = {
   toX: number;
   y: number;
   widthM: number;
+  elbowX?: number;
+  elbowY?: number;
 };
 
 export type Guide = { x1: number; y1: number; x2: number; y2: number };
@@ -147,20 +149,36 @@ function grow(box: Aabb, pad: number): Aabb {
   return { minX: box.minX - pad, minY: box.minY - pad, maxX: box.maxX + pad, maxY: box.maxY + pad };
 }
 
+function projectOnSegment(x: number, y: number, ax: number, ay: number, bx: number, by: number): { x: number; y: number; d: number } {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const len2 = abx * abx + aby * aby;
+  const t = len2 <= 1e-12 ? 0 : Math.max(0, Math.min(1, ((x - ax) * abx + (y - ay) * aby) / len2));
+  const px = ax + abx * t;
+  const py = ay + aby * t;
+  return { x: px, y: py, d: Math.hypot(x - px, y - py) };
+}
+
 export function projectAccess(x: number, y: number, aisle: AisleLine | null): AccessHit | null {
   if (!aisle) return null;
-  const lo = Math.min(aisle.fromX, aisle.toX);
-  const hi = Math.max(aisle.fromX, aisle.toX);
-  const ax = Math.min(hi, Math.max(lo, x));
-  const ay = aisle.y;
-  const dist = Math.hypot(x - ax, y - ay);
-  if (dist > MAX_ACCESS_M) return null;
-  const qx = quantMeter(ax);
-  const qy = quantMeter(ay);
+  let hit: { x: number; y: number; d: number };
+  if (aisle.elbowX === undefined || aisle.elbowY === undefined) {
+    const lo = Math.min(aisle.fromX, aisle.toX);
+    const hi = Math.max(aisle.fromX, aisle.toX);
+    const ax = Math.min(hi, Math.max(lo, x));
+    hit = { x: ax, y: aisle.y, d: Math.hypot(x - ax, y - aisle.y) };
+  } else {
+    const first = projectOnSegment(x, y, aisle.fromX, aisle.y, aisle.elbowX, aisle.elbowY);
+    const second = projectOnSegment(x, y, aisle.elbowX, aisle.elbowY, aisle.toX, aisle.y);
+    hit = first.d <= second.d ? first : second;
+  }
+  if (hit.d > MAX_ACCESS_M) return null;
+  const qx = quantMeter(hit.x);
+  const qy = quantMeter(hit.y);
   return {
     x: qx,
     y: qy,
-    dist,
+    dist: hit.d,
     id: `n-acc-${Math.round(qx * 100)}-${Math.round(qy * 100)}`,
   };
 }

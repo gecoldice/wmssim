@@ -18,7 +18,9 @@ downstream "run" walks those cases; true / generate_only only records them.
 Speeds and process seconds are required inputs on the flow API. A direct
 gold scenario may omit pick/ship; those durations stay 0 instead of being invented.
 A workload whose access nodes are not connected raises ROUTE_UNREACHABLE
-before the event loop, so a rejected load does not emit cards.
+before the event loop, so a rejected load does not emit cards. A one-way
+aisle uses the same code and says the direction is the block. A turning
+radius rejects a corner whose aisle is narrower than twice that radius.
 """
 
 from __future__ import annotations
@@ -32,7 +34,14 @@ from uuid import uuid4
 
 from .conveyor import ConveyorGraph, direct_is_pure_conveyor, raise_if_refused
 from .errors import DesError
-from .graph import build_adjacency, edge_lookup, shortest_path, travel_time_sec
+from .graph import (
+    build_adjacency,
+    direction_is_the_block,
+    edge_lookup,
+    shortest_path,
+    tight_turn,
+    travel_time_sec,
+)
 from .inventory import InventoryLedger, location_id
 from .kpi import compute_cards
 
@@ -99,6 +108,7 @@ class _Res:
     last_busy_end: float = 0.0
     travel_mps: Optional[float] = None
     empty_mps: Optional[float] = None
+    turning_radius_m: Optional[float] = None
 
 
 @dataclass
@@ -160,6 +170,16 @@ class DesEngine:
         self.handoff_queue_sec = 0.0
         self.conv_gates: Dict[str, _Gate] = {}
 
+    def _optional_radius(self, value: Any) -> Optional[float]:
+        if value in (None, ""):
+            return None
+        number = float(value)
+        if number < 0:
+            raise DesError("INPUT_UNCONFIRMED", "转向半径不能为负", {"field": "turningRadiusM"})
+        if number == 0:
+            return None
+        return number
+
     def _require_number(self, bag: Dict[str, Any], key: str, label: str) -> float:
         if key not in bag or bag[key] is None or bag[key] == "":
             raise DesError("INPUT_UNCONFIRMED", f"{label}未填写", {"field": key})
@@ -211,6 +231,7 @@ class DesEngine:
         elif svc.get("casesPerPallet") not in (None, ""):
             cases = svc.get("casesPerPallet")
         self.cases_per_pallet = float(cases) if cases not in (None, "") else None
+        self.turning_radius = self._optional_radius(svc.get("turningRadiusM"))
         self.nodes = {}
         self.slots = {}
         self.docks = {}
@@ -402,6 +423,7 @@ class DesEngine:
                         node_id=home,
                         travel_mps=float(spec["travelSpeedMps"]) if spec.get("travelSpeedMps") else None,
                         empty_mps=float(spec["emptySpeedMps"]) if spec.get("emptySpeedMps") else None,
+                        turning_radius_m=self._optional_radius(spec.get("turningRadiusM")),
                     )
                 )
             if self._needs_forklift() and not any(r.resource_type == "forklift" for r in self.resources):
@@ -437,6 +459,7 @@ class DesEngine:
                         resource_type=rtype,
                         pool_id=pool_id,
                         node_id=home,
+                        turning_radius_m=self.turning_radius if rtype == "forklift" else None,
                     )
                 )
         if self._needs_forklift() and not any(r.resource_type == "forklift" for r in self.resources):
@@ -703,7 +726,8 @@ class DesEngine:
     def _pump(self, pool_id: str) -> None:
         queue = self.queues[pool_id]
         while queue:
-            res = self._idle(pool_id)
+            head = self.tasks[queue[0]]
+            res = self._idle(pool_id) if head.status == "queued_handoff" else self._idle_fit(pool_id, head)
             if res is None:
                 head = self.tasks[queue[0]]
                 if head.status == "queued_handoff":
@@ -1201,49 +1225,128 @@ class DesEngine:
     def _homes(self, kind: str) -> List[str]:
         return [res.node_id for res in self.resources if res.resource_type == kind and res.node_id]
 
+    def _crew(self, kind: str) -> List[_Res]:
+        return [res for res in self.resources if res.resource_type == kind and res.node_id]
+
+    def _join_route(self, home: str, origin: str, dest: str) -> Optional[tuple]:
+        path_a = shortest_path(self.adj, home, origin)
+        path_b = shortest_path(self.adj, origin, dest)
+        if path_a is None or path_b is None:
+            return None
+        nodes = list(path_a["nodes"])
+        edges = list(path_a["edges"])
+        if path_b["nodes"]:
+            nodes.extend(path_b["nodes"][1:])
+            edges.extend(path_b["edges"])
+        return nodes, edges
+
+    def _origins_for(self, task: _Task) -> List[str]:
+        if task.direction in {"outbound_ship", "break_bulk"} and not task.origin_node:
+            return [
+                str(slot.get("accessNodeId"))
+                for slot in self.slots.values()
+                if slot.get("accessNodeId") and self.inventory.available(slot["elementId"]) + 1e-9 >= task.qty
+            ]
+        if task.origin_node:
+            return [task.origin_node]
+        return []
+
+    def _survey(self, res: _Res, origins: List[str], dest: str) -> tuple:
+        saw_path = False
+        deficit = None
+        for origin in origins:
+            route = self._join_route(res.node_id, origin, dest)
+            if route is None:
+                continue
+            saw_path = True
+            block = tight_turn(self.nodes, route[0], route[1], self.edges, res.turning_radius_m)
+            if block is None:
+                return "ok", None
+            deficit = block
+        if not saw_path:
+            return "nolink", None
+        return "tight", deficit
+
+    def _idle_fit(self, pool_id: str, task: _Task) -> Optional[_Res]:
+        idle = [r for r in self.resources if r.pool_id == pool_id and r.task_id is None]
+        if not idle:
+            return None
+        idle.sort(key=lambda r: (r.last_busy_end, r.resource_id))
+        dest = task.dest_node
+        origins = self._origins_for(task)
+        if not dest or not origins:
+            return idle[0]
+        for res in idle:
+            if self._survey(res, origins, dest)[0] == "ok":
+                return res
+        return None
+
+    def _raise_unlink(self, task: _Task, homes: List[str], origins: List[str], dest: str) -> None:
+        pairs = [(home, origin) for home in homes for origin in origins]
+        pairs.extend((origin, dest) for origin in origins)
+        one_way = any(direction_is_the_block(self.snapshot, origin, dest_id) for origin, dest_id in pairs)
+        message = "单向通道走不通，加载失败，未进入调度" if one_way else "通道图不连通，加载失败，未进入调度"
+        raise DesError(
+            "ROUTE_UNREACHABLE",
+            message,
+            {"taskId": task.task_id, "originNode": origins[0] if origins else None, "destNode": dest},
+        )
+
+    def _raise_turn(self, task: _Task, block: Dict[str, Any]) -> None:
+        node = block.get("nodeId")
+        if block.get("missingWidth"):
+            raise DesError(
+                "INPUT_UNCONFIRMED",
+                f"转不过这个弯：{node} 通道宽度未填写",
+                {"taskId": task.task_id, "nodeId": node},
+            )
+        width = self._plain_num(float(block["widthM"]))
+        radius = self._plain_num(float(block["radiusM"]))
+        need = self._plain_num(float(block["needM"]))
+        raise DesError(
+            "TURN_TOO_TIGHT",
+            f"转不过这个弯：{node} 通道宽 {width} m，转向半径 {radius} m 需要至少 {need} m",
+            {"taskId": task.task_id, "nodeId": node, "widthM": block["widthM"], "turningRadiusM": block["radiusM"]},
+        )
+
+    @staticmethod
+    def _plain_num(value: float) -> str:
+        text = f"{value:.6f}".rstrip("0").rstrip(".")
+        return text or "0"
+
     def _reject_if_unlinked(self) -> None:
-        """Stop at load when this workload has no aisle path. No events, no cards."""
+        """Stop at load when this workload has no aisle path or cannot turn. No events, no cards."""
         if not self._homes("forklift") and not self._homes("picker"):
             return
         for task in self.tasks.values():
             if task.path_mode in {"conveyor", "conveyor_then_access"}:
                 continue
-            homes = self._homes("picker" if task.direction == "piece_pick" else "forklift")
-            if not homes:
+            kind = "picker" if task.direction == "piece_pick" else "forklift"
+            crew = self._crew(kind)
+            if not crew:
                 continue
             dest = task.dest_node
-            if task.direction in {"outbound_ship", "break_bulk"} and not task.origin_node:
-                origins = [
-                    str(slot.get("accessNodeId"))
-                    for slot in self.slots.values()
-                    if slot.get("accessNodeId")
-                    and self.inventory.available(slot["elementId"]) + 1e-9 >= task.qty
-                ]
-                if not dest or not origins:
-                    continue
-                linked = any(
-                    self._path_ok(home, origin) and self._path_ok(origin, dest)
-                    for home in homes
-                    for origin in origins
-                )
-                if not linked:
-                    raise DesError(
-                        "ROUTE_UNREACHABLE",
-                        "通道图不连通，加载失败，未进入调度",
-                        {"taskId": task.task_id, "destNode": dest},
-                    )
+            origins = self._origins_for(task)
+            if not dest or not origins:
                 continue
-            if task.origin_node and dest:
-                linked = any(
-                    self._path_ok(home, task.origin_node) and self._path_ok(task.origin_node, dest)
-                    for home in homes
-                )
-                if not linked:
-                    raise DesError(
-                        "ROUTE_UNREACHABLE",
-                        "通道图不连通，加载失败，未进入调度",
-                        {"taskId": task.task_id, "originNode": task.origin_node, "destNode": dest},
-                    )
+            saw_ok = False
+            saw_path = False
+            deficit = None
+            for res in crew:
+                state, block = self._survey(res, origins, dest)
+                if state == "ok":
+                    saw_ok = True
+                    break
+                if state == "tight":
+                    saw_path = True
+                    deficit = block
+                if state == "nolink":
+                    continue
+            if saw_ok:
+                continue
+            if saw_path and deficit is not None:
+                self._raise_turn(task, deficit)
+            self._raise_unlink(task, [res.node_id for res in crew], origins, dest)
 
     def _note_occupied(self, seg: Any, dt: float) -> None:
         row = self.occupied.setdefault(seg.instance_id, {"elementId": seg.type_id, "occupiedSec": 0.0})
